@@ -4,15 +4,21 @@
 classdef Sensor < handle
     
     properties
+        max_range double {mustBeNonnegative} %(m) max range 
         range (1,2) double {mustBeNonNan} % nodes
-        FoV (:,2) int16 {mustBeNonNan} % circular FoV matrix centered around 0,0
-        perimeter (:,2) int16 {mustBeNonNan} % perimeter of the FoV
-
+        FoV (:,2) double {mustBeNonNan} % circular FoV matrix centered around 0,0
+        perimeter (:,2) double {mustBeNonNan} % perimeter of the FoV
         measurements table = table; % container for the current field of vision
-        types cell; % type of measurements
+        epsilon; % uncertainty score function
+
+        features cell; % type of measurements
+        t_s duration; % sampling time
+        d_energy double {mustBeNonnegative}; % energy depletion (%/s)
+
         color string;
         remote_sensing logical; % True -> measures all Fov
                                 % False -> only measures visible points
+        handles;
     end
    
     methods
@@ -20,16 +26,22 @@ classdef Sensor < handle
         function self = Sensor(params)
             % params:
             %   remote_sensing: bool
-            %   type: str (corresponding to a column name in World)
+            %   features: str (corresponding to a column name in World)
             %   range: (1,2) node range in x and y directions 
+            %   max_range: (m) max range in meters
             %   color: color on the plot
-
+            %   t_s: (s) sampling time
+            %   d_energy: (%/s) energy percentage depletion per second
             addpath('utils');
             
             self.remote_sensing = params.remote_sensing;
-            self.types = params.types;
+            self.features = params.features;
+            self.max_range = params.max_range;
             self.range = params.range;
             self.color = params.color;
+            self.t_s = duration(params.t_s, 'InputFormat', 'mm:ss');
+            self.d_energy = params.d_energy;
+
             % create neighborhood circular FoV matrix and the perimeter
             self.perimeter = [];
             self.FoV = [];
@@ -59,11 +71,13 @@ classdef Sensor < handle
             end
             % simplify repeating entries
             self.perimeter = unique(self.perimeter, 'rows');
+            % uncertainty score function
+            self.epsilon = uncertainty_score(self.remote_sensing ,...
+                                             self.max_range);
         end
 
         %% Get all the visible nodes in the FoV from given position
         function visible = get_visible(self, height, node, world)
-
             [node_row, node_col] = ind2sub(world.grid_dim, node);
             visible = [];
             % find points on the perimeter
@@ -82,7 +96,7 @@ classdef Sensor < handle
                 % find the points along the line
                 terrain = world.environment.Nodes.terrain(line);
                 % find if there is a peak higher than the sensor height
-                if all(terrain < height + world.environment.Nodes.terrain(node)) == true
+                if all(terrain < height + world.environment.Nodes.terrain(node)) 
                     % all points along the line are below current height
                     visible = [visible; line];
                 else
@@ -90,8 +104,6 @@ classdef Sensor < handle
                     % get the first peak and prune the points after that
                     high_pks_locs = locs(pks >= height + world.environment.Nodes.terrain(node));
                     if isempty(high_pks_locs)
-                        % if all peaks are below sensor height, include all
-                        % (WIP)
                         visible = [visible; line];
                     else
                         visible = [visible;
@@ -118,7 +130,7 @@ classdef Sensor < handle
         end
 
         %% Update measurements 
-        function measure(self, height, cur_node, world)
+        function [energy, dt] = measure(self, height, cur_node, world)
             if self.remote_sensing
                 nodes = self.get_all(cur_node, world);
             else
@@ -126,25 +138,34 @@ classdef Sensor < handle
             end
             coordinates = [world.X(nodes) world.Y(nodes)];
             self.measurements = table(nodes, coordinates);
-            for i = 1:length(self.types)
-                data = world.environment.Nodes(nodes, self.types{i});
-                self.measurements.(self.types{i}) = data.(self.types{i})(:);
+            % get node distances from current node
+            x = world.X(nodes);
+            y = world.Y(nodes);
+            d = vecnorm([x(:) y(:)]' - [world.X(cur_node); world.Y(cur_node)]);
+            for i = 1:length(self.features)
+                % TODO: add measurement errors
+                data = world.environment.Nodes(nodes, self.features{i});
+                self.measurements.(self.features{i}) = data.(self.features{i})(:);
             end
+            % add uncertainty (aggregated accross features)
+            self.measurements.uncertainty = eval(self.epsilon(d))';
+            dt = seconds(self.t_s);
+            energy = dt * self.d_energy;
         end
 
         %% Plot
-        function plot(self, ax)
-            persistent plot_handle;
+        function plot(self, gui)
             if nargin > 1
-                plot_handle = scatter(ax, 0, 0, 1, self.color, 'filled');
+                self.handles.fov_world = scatter(gui.world, ...
+                                                self.measurements.coordinates(:, 1), ...
+                                                self.measurements.coordinates(:, 2), ...
+                                                7, 'MarkerFaceAlpha', 0.5, ...
+                                                'MarkerFaceColor', self.color, ...
+                                                'MarkerEdgeColor', self.color);
             end
-            if ~isempty(self.measurements)
-                set(plot_handle, 'XData', self.measurements.coordinates(:, 1), ...
-                                 'YData', self.measurements.coordinates(:, 2), ...
-                                 'SizeData', 10, ...
-                                 'MarkerFaceAlpha', 0.7);
-     
-            end
+            set(self.handles.fov_world, ...
+                'XData', self.measurements.coordinates(:, 1), ...
+                'YData', self.measurements.coordinates(:, 2));
         end
     end
 end

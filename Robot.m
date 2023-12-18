@@ -3,104 +3,104 @@
 classdef Robot < handle
     
     properties  
+        world World;
+        task_set GlobalTasks;
+        time duration;
+        max_step double {mustBeReal, mustBeNonnegative}; % m 
+        speed double {mustBeReal, mustBeNonnegative}; % m/s
+        height double {mustBeNonnegative, mustBeReal}; % m
+        crit_energy double {mustBeNonnegative}; % percentage 
+        energy_per_m double {mustBeNonnegative}; % percentage
+
+        visible_sensor Sensor;
+        remote_sensor Sensor;
+        measurements table;
+        PI_model mamfis;
+        energy double {mustBeNonnegative} = 100; % percentage energy
+
+        map graph = graph;
+        map_features cell;
+
         id string
         color string
+        handles
 
-        world World
-        camera Sensor
-        sensor Sensor
 
-        velocity double {mustBeReal, mustBeNonnegative} % m/s
-        max_step double {mustBeReal, mustBeNonnegative} % m
-        PI_model mamfis;
-        measurements table;
-        path (1, :) uint16 {mustBeNonNan};
 
-        time double {mustBeNonnegative} = 0; % s
-        height double {mustBeNonnegative, mustBeReal} = 0; % m
-        path_plan_steps = 7;
-        path_plan_lambda = 0.8;
+        prev = [];
     end
     
     properties (SetObservable)
-        node uint16 {mustBeNonnegative} = 1;
+        node double {mustBeNonnegative} = 1;
     end
 
     methods
         %% Constructor
-        function self = Robot(params, world)
+        function self = Robot(params, s_params, world, tasks)
             % parameters
             % id            : robot id
             % color         : plotting color
-            % cam_range     : camera range in meters to detect terrain
-            % perc_range    : perception range for remote sensing
-            % velocity      : travel velocity m/s
+            % visible_range : (m) visible sensor range
+            % remote_range  : (m) remote sensor range
+            % crit_energy   : (%) critical power percentage
+            % energy_per_m  : (%) energy expenditure percentage per meter
+            % speed         : travel speed m/s
             % max_step      : maximum step increase the robot can climb (m)
             % height        : height of the robot above ground (m)
-            % PI_model_file : path of the PI model
+            % PI_model      : path of the PI model
+            %
+            % s_params      : struct containing sensor settings
+            self.world = world;
+            self.task_set = tasks;
 
             self.id = params.id;
             self.color = params.color;
 
-            self.velocity = params.velocity;
+            self.time = seconds(0);
             self.max_step = params.max_step;
+            self.speed = params.speed;
             self.height = params.height;
-            self.PI_model = readfis(params.PI_model_file);
+            self.crit_energy = params.crit_energy;
+            self.energy_per_m = params.energy_per_m;
+            self.PI_model = readfis(params.PI_model);
 
-            self.world = world;
+            % create map
+            self.map_features = params.map_features;
+            % function e = edge_fcn(source, target)
+            %     source_vec = [self.world.X(source)
+            %                   self.world.Y(source)];
+            %     target_vec = [self.world.X(target)
+            %                   self.world.Y(target)];
+            %     e = norm(target_vec - source_vec);
+            % end
+            % % node function
+            % function v = vertex_fcn(nodes)
+            %     N = numel(nodes);
+            %     table_data = cell(N, 2);
+            %     table_data(:, 1) = arrayfun(@num2str, 1:N, 'UniformOutput', false);
+            %     table_data(:, 2) = arrayfun(@(x) NaN, 1:N, 'UniformOutput', false);
+            %     v = cell2table(table_data, ...
+            %                    'VariableNames', ["Name", self.map_features]);
+            % end
+            % self.map = create_map(self.world.grid_dim, @edge_fcn, @vertex_fcn);
 
-            % camera 
-            grid_cell_size = world.world_dim ./ double(world.grid_dim);
-            cam_params.range = ceil(params.cam_range ./ grid_cell_size(:));
-            cam_params.types = {'terrain', 'destruction'};
-            cam_params.remote_sensing = false;
-            cam_params.color = 	'green';
-            self.camera = Sensor(cam_params);
+            % visible sensor
+            vs_params = s_params.visible_sensor;
+            vs_params.range = ceil(params.visible_range ./ world.cell_size(:));
+            vs_params.max_range = params.visible_range;
+            self.visible_sensor = Sensor(vs_params);
 
-            % perception
-            sens_params.range = ceil(params.perc_range ./ grid_cell_size(:));
-            sens_params.types = {'population'};
-            sens_params.remote_sensing = true;
-            sens_params.color = 'magenta';
-            self.sensor = Sensor(sens_params);
+            % remote sensor
+            rs_params = s_params.remote_sensor;
+            rs_params.range = ceil(params.remote_range ./ world.cell_size(:));
+            rs_params.max_range = params.remote_range;
+            self.remote_sensor = Sensor(rs_params);   
 
             addlistener(self, 'node', 'PostSet', @self.measure);
         end
 
-
-        %% Get measurements every time a new node is reached
-        function measure(self, varargin)
-            self.camera.measure(self.height, self.node, self.world);
-            self.sensor.measure(self.height, self.node, self.world);
-            % merge data
-            self.measurements = outerjoin(self.camera.measurements, ...
-                                          self.sensor.measurements, ...
-                                          "Keys", "nodes", "MergeKeys", true);
-            % calculate PI
-            self.calculate_PI();
-            % update tasks
-            sensed_nodes = self.sensor.measurements.nodes;
-            self.world.environment.Nodes(sensed_nodes, :).task = repmat(Tasks.none, length(sensed_nodes), 1);
-        end
-
-        %% Calulcate PI value from a set of measurements
-        function calculate_PI(self)
-            if ~isempty(self.measurements)
-                PI_input = [self.measurements.destruction ...
-                            self.measurements.population];
-                % treat NaNs as 0.5
-                PI_input = fillmissing(PI_input, 'constant', [0.5 0.5]);
-                PI_values = evalfis(self.PI_model, PI_input);
-                self.measurements.PI = PI_values;
-            end
-        end
-
         %% Place robot on the closest point to the given coordinates
         function place(self, pos)
-            arguments
-                self Robot
-                pos (2,1) double {mustBeReal}
-            end
             dif_x = abs(self.world.X(1,:) - pos(1));
             dif_y = abs(self.world.Y(:,1) - pos(2));
 
@@ -110,135 +110,199 @@ classdef Robot < handle
             self.node = sub2ind(self.world.grid_dim, i_y, i_x);
         end
 
+        %% Get measurements every time a new node is reached
+        function measure(self, varargin)
+            [v_energy, v_ts] = self.visible_sensor.measure(self.height, ...
+                                                           self.node, ...
+                                                           self.world);
+            [r_energy, r_ts] = self.remote_sensor.measure(self.height, ...
+                                                          self.node, ...
+                                                          self.world);
+            e = self.energy - v_energy - r_energy;
+            if e < 0  e = 0; end
+            self.energy = e;
+
+            self.time = self.time + seconds(max(v_ts, r_ts));
+
+            % merge data
+            self.measurements = outerjoin(self.visible_sensor.measurements, ...
+                                          self.remote_sensor.measurements, ...
+                                          "Keys", {'nodes', 'coordinates'}, ...
+                                          "MergeKeys", true);
+            % calculate PI
+            PI_input = [self.measurements.destruction ...
+                        self.measurements.population];
+            PI_values = evalfis(self.PI_model, PI_input);
+            self.measurements.PI = PI_values;
+            % update tasks
+            %sensed_nodes = self.sensor.measurements.nodes;
+            %self.world.environment.Nodes(sensed_nodes, :).task = repmat(Tasks.none, length(sensed_nodes), 1);
+        end
+
+        %% Update the global map with the current measurements
+        % Assuming no measurement errors on 'terrain'
+        function map = update_global_map(self, map)
+            sub = subgraph(self.world.environment, ...
+                           self.visible_sensor.measurements.nodes);   
+            % get the new nodes with terrain information
+            if isempty(map.Nodes)
+                new_nodes = sub.Nodes(:, ["Name", self.map_features]);
+                [~, idx] = ismember(cellfun(@str2num, new_nodes.Name), ...
+                                    self.visible_sensor.measurements.nodes);
+                new_nodes.uncertainty = self.visible_sensor.measurements.uncertainty(idx);
+            else
+                new_nodes = sub.Nodes(~ismember(sub.Nodes.Name, map.Nodes.Name), ...
+                                      ["Name", self.map_features]);
+                [~, idx] = ismember(cellfun(@str2num, new_nodes.Name), ...
+                                    self.visible_sensor.measurements.nodes);
+                new_nodes.uncertainty = self.visible_sensor.measurements.uncertainty(idx);
+            end
+            % add the subgraph to the map
+            map = map.addnode(new_nodes);
+            map = map.addedge(sub.Edges);
+            % remove repeated entries
+            map = map.simplify();
+            % identify nodes on map where the uncertainty is larger 
+            for i = 1:length(self.visible_sensor.measurements.nodes)
+                % update the uncertainties 
+                idx = strcmp(map.Nodes.Name, ...
+                             num2str(self.visible_sensor.measurements.nodes(i)));
+                uncertainty = map.Nodes.uncertainty(idx);
+                if uncertainty > self.visible_sensor.measurements.uncertainty(i)
+                    map.Nodes.uncertainty(idx) = self.visible_sensor.measurements.uncertainty(i);
+                end
+            end
+        end
+
+        %% Update the local map with the current measurements
+        % Assuming no measurement errors on 'terrain'
+        function update_local_map(self, map)
+            % % get the terrains that are in the global map
+            % for f = 1:length(self.map_features)
+            %     feature = self.map_features{f};
+            %     nodes = cellfun(@str2num, map.Nodes.Name);
+            %     self.map.Nodes.(feature)(nodes) = map.Nodes.(feature); 
+            % end
+            % % update the edges from the current global map
+            % self.map = self.map.addedge(map.Edges);
+            % % simplify the map with keeping the updated values
+            % self.map = self.map.simplify('last');
+
+            self.map = map;
+            % remove the infeasable edges
+            c = find(~self.traversability(map.Edges.EndNodes));
+            self.map = self.map.rmedge(map.Edges.EndNodes(c,1), ...
+                                       map.Edges.EndNodes(c,2));
+        end
+
+        %% Traversability of the environment
+        function c = traversability(self, edges)
+            steps = abs(self.map.Nodes.terrain(self.map.findnode(edges(:,1))) - ...
+                        self.map.Nodes.terrain(self.map.findnode(edges(:,2))));
+            %steps(isnan(steps)) = 0;
+            c = steps <= self.max_step;
+        end
+
+        %% Make a decision to take an action
+        function map = run(self, map)
+            path = self.path_planner();
+            self.move(path(1));
+            % update maps
+            map = self.update_global_map(map);
+            self.update_local_map(map);
+            % manage tasks
+            new_tasks = self.task_set.spawn_tasks(map, self.time);
+            for i = 1:length(new_tasks)
+                self.task_set.add_task(new_tasks{i});
+            end
+            self.perform_tasks();
+        end
+        
+        %% Perform applicable tasks
+        function perform_tasks(self)
+            % get the tasks that can be completed with the current
+            % measurements
+            for i = 1:length(self.measurements.nodes)
+                task_node = self.measurements.nodes(i);
+                if self.task_set.items.isKey(task_node)
+                    % there is a task at the measured node
+                    task = self.task_set.items(task_node);
+                    if task.type == "explore"
+                        if self.measurements.uncertainty_left(i) <= self.task_set.exp_kill_thresh
+                            % PI value is good enough to complete the
+                            % explore task
+                            self.task_set.remove_task(task_node);   
+                        end
+                    end
+                end
+            end
+        end
+
         %% Move the robot towards a target node 
-        function dt = move(self, target)
+        % mustBeAValidTarget(.,., x): 
+        %   x -> True : check for steps
+        %   x -> False: skip step checking
+        function move(self, target)
             arguments
                 self Robot
-                target uint16 {mustBeAValidTarget(target, self, 1)}
+                target double {mustBeAValidTarget(target, self, 1)}
             end
-            dt = 0;
-            if target ~= self.node
-                edge = findedge(self.world.environment, self.node, target);
-                distance = self.world.environment.Edges(edge,:).Weight;
-                dt = distance / self.velocity;
-                self.time = self.time + dt;
-                self.node = target;
-            end
+            edge = findedge(self.world.environment, self.node, target);
+            distance = self.world.environment.Edges(edge,:).Weight;
+            dt = distance / self.speed;
+            e = self.energy - distance * self.energy_per_m;
+            if e < 0  e = 0; end
+            self.energy = e;
+            self.time = self.time + seconds(dt);
+            self.node = target;
         end
 
         %% Plan a path
-        function path_planner(self)
+        function path = path_planner(self)
             % find all possible paths of search depth
-            tic;
+            % tic;
+            % 
+            % paths = find_all_paths(self.world.environment, ...
+            %                        self.node, ...
+            %                        self.path_plan_steps, ...
+            %                        @(g,s) uint16(neighbors(g, s)'));
+            % 
+            % fprintf('%s found total %.0f paths in %f seconds\n', self.id, length(paths), toc); 
+            % % evaluate the paths
+            % self.evaluate_path([], true);
+            % tic;
+            % [best_val, best_idx] = max(cellfun(@(path)self.evaluate_path(path, false), paths));
+            % fprintf('%s evaluated all paths in %f seconds | e(path) = %.2f\n', self.id, toc, best_val);
+            % self.path = paths{best_idx};
+            
 
-            paths = find_all_paths(self.world.environment, ...
-                                   self.node, ...
-                                   self.path_plan_steps, ...
-                                   @(g,s) uint16(neighbors(g, s)'));
-
-            fprintf('%s found total %.0f paths in %f seconds\n', self.id, length(paths), toc); 
-            % evaluate the paths
-            self.evaluate_path([], true);
-            tic;
-            [best_val, best_idx] = max(cellfun(@(path)self.evaluate_path(path, false), paths));
-            fprintf('%s evaluated all paths in %f seconds | e(path) = %.2f\n', self.id, toc, best_val);
-            self.path = paths{best_idx};
-        end
-
-        %% Evaluate a path
-        function value = evaluate_path(self, path, clear_lookups)
-            persistent c_lookup u_lookup;
-            if clear_lookups
-                c_lookup = cell2table({[0 0], 0}, 'VariableNames', {'edge', 'capability'});
-                u_lookup = cell2table({[0 0], 0, 0}, 'VariableNames', {'edge', 'dt', 'u_0'});
-                value = 0;
-            else
-                u_tot = 0;
-                t_elapsed = self.time;
-                cur = path(1);
-                for i = 2:length(path)
-                    % check if the transition capability already calculated
-                    [c_flag, c_loc] = ismember([cur path(i)], c_lookup.edge, 'rows');
-                    if c_flag
-                        c = c_lookup.capability(c_loc);
-                    else
-                        c = self.capability(cur, path(i));
-                        c_lookup(end+1, :) = table([cur path(i)], c, 'VariableNames', {'edge', 'capability'});
-                    end
-                    if c == 0
-                        value = -1;
-                        return
-                    end
-                    % check if the transition utility already calculated
-                    [u_flag, u_loc] = ismember([cur path(i)], u_lookup.edge, 'rows');
-                    if u_flag
-                        u_0 = u_lookup.u_0(u_loc);
-                        dt = u_lookup.dt(u_loc);
-                        t_elapsed = t_elapsed + dt;
-                        if u_0 == 0
-                            u = 0;
-                        elseif u_0 == 1
-                            u = self.path_plan_lambda^(t_elapsed - self.time);
-                        else
-                            u = self.path_plan_lambda^(t_elapsed - self.time) + u_0;
-                        end
-                    else
-                        [u, dt, u_0] = self.utility(cur, path(i), t_elapsed);
-                        t_elapsed = t_elapsed + dt;
-                        u_lookup(end+1, :) = table([cur path(i)], dt, u_0, 'VariableNames', {'edge', 'dt', 'u_0'});
-                    end
-
-                    u_tot = u_tot + u;
-                    cur = path(i);
-                end
-                value = c * u_tot;
+            if isempty(self.prev)
+                self.prev = [self.node];
             end
+            n = self.world.environment.neighbors(self.node);
+            candidates = setdiff(n, self.prev);
+            %next = candidates(randi(numel(candidates)));
+            next = candidates(1);
+            self.prev(end+1) = next;
+            path = next;
         end
-
-        %% Capability of transitioning between two given nodes
-        function c = capability(self, cur, next)
-            step = abs(self.world.environment.Nodes.terrain(cur) - ...
-                       self.world.environment.Nodes.terrain(next));
-            if step > self.max_step 
-                c = 0;
-            else
-                c = 1;
-            end
-        end
-
-        %% Utility of reaching a node
-        function [u, dt, u_0] = utility(self, cur, next, t_elapsed)
-           if ismember(cur, self.camera.measurements.nodes) && ...
-              ismember(next, self.camera.measurements.nodes)
-               % the actual node distance can be calculated
-               edge = findedge(self.world.environment, cur, next);
-               distance = self.world.environment.Edges(edge,:).Weight;
-           else
-               % node distance can be estimated
-               cur_coord = [self.world.X(cur) self.world.Y(cur)];
-               next_coord = [self.world.X(next) self.world.Y(next)];
-               distance = norm(cur_coord - next_coord);
-           end
-           dt = distance / self.velocity;
-           t_elapsed = t_elapsed + dt;
-           % task based utilities
-           if self.world.environment.Nodes.task(next) == Tasks.none
-               u = 0;
-               u_0 = 0;
-           elseif ismember(next, self.measurements.nodes)
-               u_0 = self.measurements.PI(self.measurements.nodes == next);
-               u = self.path_plan_lambda^(t_elapsed - self.time) + u_0;
-           else
-               u_0 = 1;
-               u = self.path_plan_lambda^(t_elapsed - self.time);
-           end
-        end
-
+       
         %% Plotter
-        function plot(self, ax)
-            self.camera.plot(ax);
-            self.sensor.plot(ax);
-            plot(ax, self.world.X(self.node), self.world.Y(self.node), '.', 'Color', self.color, 'MarkerSize', 20);
+        function plot(self, gui)
+            if nargin > 1
+                self.visible_sensor.plot(gui);
+                self.remote_sensor.plot(gui);
+                self.handles.pos_world = plot(gui.world, ...
+                                             self.world.X(self.node), ...
+                                             self.world.Y(self.node), ...
+                                             '.', 'Color', self.color, ...
+                                             'MarkerSize', 20);
+            end
+            self.visible_sensor.plot();
+            self.remote_sensor.plot();
+            set(self.handles.pos_world, ...
+                'XData', self.world.X(self.node), ...
+                'YData', self.world.Y(self.node));
         end
     end
 end
