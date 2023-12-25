@@ -27,7 +27,7 @@ mission:
     robots:
         ugv:
             count: 1
-            p_init: [[10, 450]]
+            p_init: [[350, 375]]
             id: ugv
             max_step: 1
             height: 1
@@ -40,11 +40,11 @@ mission:
             color: black
         
         uav:
-            count: 0
-            p_init: [[20, 450]]
+            count: 1
+            p_init: [[75, 375]]
             id: uav
             max_step: 100
-            height: 10
+            height: inf
             speed: 5
             crit_energy: 0
             energy_per_m: 0.1
@@ -56,6 +56,6 @@ mission:
 tasks:
     explore:
         pi: visible_sensor
-        spawn_thresh: 0.8
-        kill_thresh: 0.2
+        spawn_thresh: 0.3
+        kill_thresh: 0.7
 

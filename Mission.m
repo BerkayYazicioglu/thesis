@@ -33,8 +33,7 @@ classdef Mission < handle
                     r_params.map_features = config.mission.map_features;
                     self.robots{k} = Robot(r_params, config.sensors, self.world, self.tasks);
                     self.robots{k}.place(cell2mat(r_params.p_init{i}));
-                    self.map = self.robots{k}.update_global_map(self.map);
-                    self.robots{k}.update_local_map(self.map);
+                    self.map = self.robots{k}.update_maps(self.map);
                     k = k+1;
                 end
             end
@@ -42,6 +41,12 @@ classdef Mission < handle
             new_tasks = self.tasks.spawn_tasks(self.map, self.t);
             for i = 1:length(new_tasks)
                 self.tasks.add_task(new_tasks{i});
+            end
+            % validate policy
+            for i = 1:length(self.robots)
+                x = self.robots{i}.state_space();
+                u = self.robots{i}.node;
+                validateFcns(self.robots{i}.policy, x, u, [], self.robots(i));
             end
         end
 

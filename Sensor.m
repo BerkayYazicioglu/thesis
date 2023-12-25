@@ -131,7 +131,9 @@ classdef Sensor < handle
 
         %% Update measurements 
         function [energy, dt] = measure(self, height, cur_node, world)
-            if self.remote_sensing
+            if self.remote_sensing 
+                nodes = self.get_all(cur_node, world);
+            elseif height == Inf
                 nodes = self.get_all(cur_node, world);
             else
                 nodes = self.get_visible(height, cur_node, world);

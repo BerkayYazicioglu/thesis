@@ -43,6 +43,9 @@ classdef GlobalTasks < handle
             tasks = cell(1, length(candidates));
             for i = 1:length(candidates)
                 t_params.type = "explore";
+                t_params.kill = self.exp_kill_thresh;
+                t_params.spawn = self.exp_spawn_thresh;
+                t_params.pi = self.exp_pi;
                 t_params.t_init = t;
                 t_params.node = candidates(i);
                 t_params.location = [self.world.X(t_params.node) self.world.Y(t_params.node)];

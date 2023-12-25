@@ -21,10 +21,16 @@ classdef Robot < handle
         map graph = graph;
         map_features cell;
 
+        % ======= WIP ======== 
+        policy;
+        considered_tasks;
+        N_tasks;
+        % ====================
+
         id string
         color string
         handles
-
+        
 
 
         prev = [];
@@ -59,30 +65,15 @@ classdef Robot < handle
             self.time = seconds(0);
             self.max_step = params.max_step;
             self.speed = params.speed;
-            self.height = params.height;
+            if isstring(params.height)
+                self.height = Inf;
+            else
+                self.height = params.height;
+            end
             self.crit_energy = params.crit_energy;
             self.energy_per_m = params.energy_per_m;
             self.PI_model = readfis(params.PI_model);
-
-            % create map
             self.map_features = params.map_features;
-            % function e = edge_fcn(source, target)
-            %     source_vec = [self.world.X(source)
-            %                   self.world.Y(source)];
-            %     target_vec = [self.world.X(target)
-            %                   self.world.Y(target)];
-            %     e = norm(target_vec - source_vec);
-            % end
-            % % node function
-            % function v = vertex_fcn(nodes)
-            %     N = numel(nodes);
-            %     table_data = cell(N, 2);
-            %     table_data(:, 1) = arrayfun(@num2str, 1:N, 'UniformOutput', false);
-            %     table_data(:, 2) = arrayfun(@(x) NaN, 1:N, 'UniformOutput', false);
-            %     v = cell2table(table_data, ...
-            %                    'VariableNames', ["Name", self.map_features]);
-            % end
-            % self.map = create_map(self.world.grid_dim, @edge_fcn, @vertex_fcn);
 
             % visible sensor
             vs_params = s_params.visible_sensor;
@@ -95,6 +86,23 @@ classdef Robot < handle
             rs_params.range = ceil(params.remote_range ./ world.cell_size(:));
             rs_params.max_range = params.remote_range;
             self.remote_sensor = Sensor(rs_params);   
+
+            % optimizer
+            self.N_tasks = 100;
+            self.considered_tasks = zeros(self.N_tasks, 1);
+            nx = 3 + self.N_tasks;
+            ny = nx;
+            nu = 1;
+            self.policy = nlmpc(nx, ny, nu);
+            self.policy.PredictionHorizon = 10;
+            self.policy.ControlHorizon = 1;
+            self.policy.Model.StateFcn = "robot_state_fcn";
+            self.policy.Model.IsContinuousTime = false;
+            %self.policy.Model.OutputFcn = "robot_output_fcn";
+            self.policy.Optimization.CustomEqConFcn = "robot_constraints";
+            self.policy.Optimization.CustomCostFcn = "robot_cost_fcn";
+            self.policy.Optimization.ReplaceStandardCost = true;
+            self.policy.Model.NumberOfParameters = 1;
 
             addlistener(self, 'node', 'PostSet', @self.measure);
         end
@@ -137,25 +145,29 @@ classdef Robot < handle
             % update tasks
             %sensed_nodes = self.sensor.measurements.nodes;
             %self.world.environment.Nodes(sensed_nodes, :).task = repmat(Tasks.none, length(sensed_nodes), 1);
+
+            % update maps
+            %self.update_maps();
         end
 
-        %% Update the global map with the current measurements
+        %% Update the global and local maps with the current measurements
         % Assuming no measurement errors on 'terrain'
-        function map = update_global_map(self, map)
+        function map = update_maps(self, map)
+            % add measurements to the global map
             sub = subgraph(self.world.environment, ...
-                           self.visible_sensor.measurements.nodes);   
+                           self.visible_sensor.measurements.nodes);  
+            % get the nodes on graph and their corresponding uncertainty
+            idx = sub.findnode(arrayfun(@num2str, ...
+                                        self.visible_sensor.measurements.nodes, ...
+                                        'UniformOutput', ...
+                                        false));
+            sub.Nodes.uncertainty = self.visible_sensor.measurements.uncertainty(idx);
             % get the new nodes with terrain information
             if isempty(map.Nodes)
-                new_nodes = sub.Nodes(:, ["Name", self.map_features]);
-                [~, idx] = ismember(cellfun(@str2num, new_nodes.Name), ...
-                                    self.visible_sensor.measurements.nodes);
-                new_nodes.uncertainty = self.visible_sensor.measurements.uncertainty(idx);
+                new_nodes = sub.Nodes(:, ["Name", self.map_features, "uncertainty"]);
             else
                 new_nodes = sub.Nodes(~ismember(sub.Nodes.Name, map.Nodes.Name), ...
-                                      ["Name", self.map_features]);
-                [~, idx] = ismember(cellfun(@str2num, new_nodes.Name), ...
-                                    self.visible_sensor.measurements.nodes);
-                new_nodes.uncertainty = self.visible_sensor.measurements.uncertainty(idx);
+                                      ["Name", self.map_features, "uncertainty"]);
             end
             % add the subgraph to the map
             map = map.addnode(new_nodes);
@@ -163,31 +175,13 @@ classdef Robot < handle
             % remove repeated entries
             map = map.simplify();
             % identify nodes on map where the uncertainty is larger 
-            for i = 1:length(self.visible_sensor.measurements.nodes)
-                % update the uncertainties 
-                idx = strcmp(map.Nodes.Name, ...
-                             num2str(self.visible_sensor.measurements.nodes(i)));
-                uncertainty = map.Nodes.uncertainty(idx);
-                if uncertainty > self.visible_sensor.measurements.uncertainty(i)
-                    map.Nodes.uncertainty(idx) = self.visible_sensor.measurements.uncertainty(i);
-                end
-            end
-        end
-
-        %% Update the local map with the current measurements
-        % Assuming no measurement errors on 'terrain'
-        function update_local_map(self, map)
-            % % get the terrains that are in the global map
-            % for f = 1:length(self.map_features)
-            %     feature = self.map_features{f};
-            %     nodes = cellfun(@str2num, map.Nodes.Name);
-            %     self.map.Nodes.(feature)(nodes) = map.Nodes.(feature); 
-            % end
-            % % update the edges from the current global map
-            % self.map = self.map.addedge(map.Edges);
-            % % simplify the map with keeping the updated values
-            % self.map = self.map.simplify('last');
-
+            node_idx = map.findnode(sub.Nodes.Name);
+            uncertainty = map.Nodes.uncertainty(node_idx);
+            uncertainty_idx = uncertainty > sub.Nodes.uncertainty;
+            uncertainty(uncertainty_idx) = sub.Nodes.uncertainty(uncertainty_idx);
+            map.Nodes.uncertainty(node_idx) = uncertainty;
+        
+            % update local map from the global map
             self.map = map;
             % remove the infeasable edges
             c = find(~self.traversability(map.Edges.EndNodes));
@@ -208,14 +202,40 @@ classdef Robot < handle
             path = self.path_planner();
             self.move(path(1));
             % update maps
-            map = self.update_global_map(map);
-            self.update_local_map(map);
+            map = self.update_maps(map);
             % manage tasks
             new_tasks = self.task_set.spawn_tasks(map, self.time);
             for i = 1:length(new_tasks)
+                % assign itself to all tasks (for now)
+                new_tasks{i}.robot = self.id;
                 self.task_set.add_task(new_tasks{i});
             end
             self.perform_tasks();
+        end
+
+        %% Create the current state space
+        function x = state_space(self)
+            x = zeros(self.N_tasks + 3, 1);
+            x(1) = seconds(self.time);
+            x(2) = self.node;
+            x(3) = self.energy;
+            % get the closest N tasks
+            task_nodes = [self.task_set.items.values().node];
+            % there are fewer tasks than the considered amount
+            if numel(task_nodes) < self.N_tasks
+                self.considered_tasks(1:length(task_nodes)) = task_nodes;
+                % pad the remaining with dummy variables
+                x(length(task_nodes):end) = -1;
+            else
+                % there are more tasks than the considered amount, find the
+                % closest ones
+                task_locs = reshape([self.task_set.items(task_nodes).location], numel(task_nodes), 2);
+                dx = task_locs(:, 1) - self.world.X(self.node);
+                dy = task_locs(:, 2) - self.world.Y(self.node);
+                task_dists = sqrt(dx.^2 + dy.^2);
+                [~, idx] = sort(task_dists);
+                self.considered_tasks = task_nodes(idx(1:self.N_tasks));
+            end
         end
         
         %% Perform applicable tasks
@@ -225,14 +245,10 @@ classdef Robot < handle
             for i = 1:length(self.measurements.nodes)
                 task_node = self.measurements.nodes(i);
                 if self.task_set.items.isKey(task_node)
-                    % there is a task at the measured node
-                    task = self.task_set.items(task_node);
-                    if task.type == "explore"
-                        if self.measurements.uncertainty_left(i) <= self.task_set.exp_kill_thresh
-                            % PI value is good enough to complete the
-                            % explore task
-                            self.task_set.remove_task(task_node);   
-                        end
+                    % there is a task at the measured node, try to perform
+                    outcome = self.task_set.items(task_node).perform_task(self);
+                    if outcome
+                        self.task_set.remove_task(task_node); 
                     end
                 end
             end
@@ -279,12 +295,17 @@ classdef Robot < handle
             if isempty(self.prev)
                 self.prev = [self.node];
             end
-            n = self.world.environment.neighbors(self.node);
+            n = self.map.neighbors(num2str(self.node));
+            n = cellfun(@str2num, n);
             candidates = setdiff(n, self.prev);
             %next = candidates(randi(numel(candidates)));
             next = candidates(1);
             self.prev(end+1) = next;
             path = next;
+            
+            %options = nlmpcmoveopt;
+            %options.Parameters = {self};
+            %[~,~,info] = nlmpcmove(self.policy, self.state_space(), self.node, [], [], options);
         end
        
         %% Plotter
