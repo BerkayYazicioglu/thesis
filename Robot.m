@@ -4,7 +4,9 @@ classdef Robot < handle
     
     properties  
         world World;
-        task_set GlobalTasks;
+
+        node char;
+        tasks TaskManager;
         time duration;
         max_step double {mustBeReal, mustBeNonnegative}; % m 
         speed double {mustBeReal, mustBeNonnegative}; % m/s
@@ -22,22 +24,12 @@ classdef Robot < handle
         map_features cell;
 
         % ======= WIP ======== 
-        policy;
-        considered_tasks;
-        N_tasks;
+        policy 
         % ====================
 
         id string
         color string
         handles
-        
-
-
-        prev = [];
-    end
-    
-    properties (SetObservable)
-        node double {mustBeNonnegative} = 1;
     end
 
     methods
@@ -57,7 +49,7 @@ classdef Robot < handle
             %
             % s_params      : struct containing sensor settings
             self.world = world;
-            self.task_set = tasks;
+            self.tasks = tasks;
 
             self.id = params.id;
             self.color = params.color;
@@ -77,34 +69,16 @@ classdef Robot < handle
 
             % visible sensor
             vs_params = s_params.visible_sensor;
-            vs_params.range = ceil(params.visible_range ./ world.cell_size(:));
             vs_params.max_range = params.visible_range;
-            self.visible_sensor = Sensor(vs_params);
+            self.visible_sensor = Sensor(vs_params, self.world);
 
             % remote sensor
             rs_params = s_params.remote_sensor;
-            rs_params.range = ceil(params.remote_range ./ world.cell_size(:));
             rs_params.max_range = params.remote_range;
-            self.remote_sensor = Sensor(rs_params);   
+            self.remote_sensor = Sensor(rs_params, self.world);   
 
-            % optimizer
-            self.N_tasks = 100;
-            self.considered_tasks = zeros(self.N_tasks, 1);
-            nx = 3 + self.N_tasks;
-            ny = nx;
-            nu = 1;
-            self.policy = nlmpc(nx, ny, nu);
-            self.policy.PredictionHorizon = 10;
-            self.policy.ControlHorizon = 1;
-            self.policy.Model.StateFcn = "robot_state_fcn";
-            self.policy.Model.IsContinuousTime = false;
-            %self.policy.Model.OutputFcn = "robot_output_fcn";
-            self.policy.Optimization.CustomEqConFcn = "robot_constraints";
-            self.policy.Optimization.CustomCostFcn = "robot_cost_fcn";
-            self.policy.Optimization.ReplaceStandardCost = true;
-            self.policy.Model.NumberOfParameters = 1;
-
-            addlistener(self, 'node', 'PostSet', @self.measure);
+            % policy
+            self.policy.frontier = {};
         end
 
         %% Place robot on the closest point to the given coordinates
@@ -115,39 +89,65 @@ classdef Robot < handle
             [~, i_x] = min(dif_x);
             [~, i_y] = min(dif_y);
 
-            self.node = sub2ind(self.world.grid_dim, i_y, i_x);
+            self.node = num2str(sub2ind(self.world.grid_dim, i_y, i_x));
         end
 
-        %% Get measurements every time a new node is reached
-        function measure(self, varargin)
-            [v_energy, v_ts] = self.visible_sensor.measure(self.height, ...
-                                                           self.node, ...
-                                                           self.world);
-            [r_energy, r_ts] = self.remote_sensor.measure(self.height, ...
-                                                          self.node, ...
-                                                          self.world);
-            e = self.energy - v_energy - r_energy;
-            if e < 0  e = 0; end
-            self.energy = e;
+        %% Perform a given action
+        function [de, dt] = perform(self, action, simplify)
+            arguments
+                self Robot
+                action string
+                simplify logical = false;
+            end
+            de = 0;
+            dt = 0;
 
-            self.time = self.time + seconds(max(v_ts, r_ts));
-
-            % merge data
-            self.measurements = outerjoin(self.visible_sensor.measurements, ...
-                                          self.remote_sensor.measurements, ...
-                                          "Keys", {'nodes', 'coordinates'}, ...
-                                          "MergeKeys", true);
-            % calculate PI
-            PI_input = [self.measurements.destruction ...
-                        self.measurements.population];
-            PI_values = evalfis(self.PI_model, PI_input);
-            self.measurements.PI = PI_values;
-            % update tasks
-            %sensed_nodes = self.sensor.measurements.nodes;
-            %self.world.environment.Nodes(sensed_nodes, :).task = repmat(Tasks.none, length(sensed_nodes), 1);
-
-            % update maps
-            %self.update_maps();
+            % explore tasks
+            if action == "explore"
+                [de, dt] = self.visible_sensor.measure(self.height, ...
+                                                       str2double(self.node));
+                % perform applicable tasks
+                for i = 1:length(self.visible_sensor.measurements.nodes)
+                    task_node = num2str(self.visible_sensor.measurements.nodes(i));
+                    if self.tasks.items.isKey(task_node)
+                        % there is a task at the node, try to perform
+                        if self.tasks.items(task_node).type == "explore"
+                            outcome = self.tasks.items(task_node).perform_task(self, simplify);
+                            if outcome
+                                % if the task could be done, remove it
+                                self.tasks.kill(task_node); 
+                                % exploration -> search depending on the PI
+                                PI = evalfis(self.PI_model, ...
+                                             [self.visible_sensor.measurements.destruction(i) ...
+                                              self.visible_sensor.measurements.population(i)]);
+                                self.tasks.spawn("search", PI, ...
+                                                 self.time + dt, ...
+                                                 task_node, ...
+                                                 PI);
+                            end
+                        end
+                    end
+                end
+            % search tasks
+            elseif action == "search"
+                [de, dt] = self.remote_sensor.measure(self.height, ...
+                                                      str2double(self.node));
+                % perform applicable tasks
+                for i = 1:length(self.remote_sensor.measurements.nodes)
+                    task_node = num2str(self.remote_sensor.measurements.nodes(i));
+                    if self.tasks.items.isKey(task_node)
+                        % there is a task at the node, try to perform
+                        if self.tasks.items(task_node).type == "search"
+                            outcome = self.tasks.items(task_node).perform_task(self, simplify);
+                            if outcome
+                                % if the task could be done, remove it
+                                self.tasks.kill(task_node); 
+                            end
+                        end
+                    end
+                end
+                
+            end
         end
 
         %% Update the global and local maps with the current measurements
@@ -200,71 +200,35 @@ classdef Robot < handle
         %% Make a decision to take an action
         function map = run(self, map)
             path = self.path_planner();
-            self.move(path(1));
-            % update maps
-            map = self.update_maps(map);
-            % manage tasks
-            new_tasks = self.task_set.spawn_tasks(map, self.time);
-            for i = 1:length(new_tasks)
-                % assign itself to all tasks (for now)
-                new_tasks{i}.robot = self.id;
-                self.task_set.add_task(new_tasks{i});
-            end
-            self.perform_tasks();
-        end
+            self.move(path{1});
 
-        %% Create the current state space
-        function x = state_space(self)
-            x = zeros(self.N_tasks + 3, 1);
-            x(1) = seconds(self.time);
-            x(2) = self.node;
-            x(3) = self.energy;
-            % get the closest N tasks
-            task_nodes = [self.task_set.items.values().node];
-            % there are fewer tasks than the considered amount
-            if numel(task_nodes) < self.N_tasks
-                self.considered_tasks(1:length(task_nodes)) = task_nodes;
-                % pad the remaining with dummy variables
-                x(length(task_nodes):end) = -1;
-            else
-                % there are more tasks than the considered amount, find the
-                % closest ones
-                task_locs = reshape([self.task_set.items(task_nodes).location], numel(task_nodes), 2);
-                dx = task_locs(:, 1) - self.world.X(self.node);
-                dy = task_locs(:, 2) - self.world.Y(self.node);
-                task_dists = sqrt(dx.^2 + dy.^2);
-                [~, idx] = sort(task_dists);
-                self.considered_tasks = task_nodes(idx(1:self.N_tasks));
+            action = "explore";
+            % perform action
+            [de, dt] = self.perform(action, true);
+            self.time = self.time + dt;
+            e = self.energy - de;
+            if e < 0  e = 0; end
+            self.energy = e;
+
+            % update maps
+            if action == "explore"
+                map = self.update_maps(map);
             end
         end
         
-        %% Perform applicable tasks
-        function perform_tasks(self)
-            % get the tasks that can be completed with the current
-            % measurements
-            for i = 1:length(self.measurements.nodes)
-                task_node = self.measurements.nodes(i);
-                if self.task_set.items.isKey(task_node)
-                    % there is a task at the measured node, try to perform
-                    outcome = self.task_set.items(task_node).perform_task(self);
-                    if outcome
-                        self.task_set.remove_task(task_node); 
-                    end
-                end
-            end
-        end
 
         %% Move the robot towards a target node 
-        % mustBeAValidTarget(.,., x): 
-        %   x -> True : check for steps
-        %   x -> False: skip step checking
         function move(self, target)
-            arguments
-                self Robot
-                target double {mustBeAValidTarget(target, self, 1)}
-            end
             edge = findedge(self.world.environment, self.node, target);
-            distance = self.world.environment.Edges(edge,:).Weight;
+            if edge
+                c = self.traversability(self.world.environment.Edges.EndNodes(edge,:));
+                if c == 0 
+                    error('The edge is too steep, check the path planner');
+                end
+                distance = self.world.environment.Edges(edge,:).Weight;
+            else
+                return
+            end
             dt = distance / self.speed;
             e = self.energy - distance * self.energy_per_m;
             if e < 0  e = 0; end
@@ -274,38 +238,30 @@ classdef Robot < handle
         end
 
         %% Plan a path
-        function path = path_planner(self)
-            % find all possible paths of search depth
-            % tic;
-            % 
-            % paths = find_all_paths(self.world.environment, ...
-            %                        self.node, ...
-            %                        self.path_plan_steps, ...
-            %                        @(g,s) uint16(neighbors(g, s)'));
-            % 
-            % fprintf('%s found total %.0f paths in %f seconds\n', self.id, length(paths), toc); 
-            % % evaluate the paths
-            % self.evaluate_path([], true);
-            % tic;
-            % [best_val, best_idx] = max(cellfun(@(path)self.evaluate_path(path, false), paths));
-            % fprintf('%s evaluated all paths in %f seconds | e(path) = %.2f\n', self.id, toc, best_val);
-            % self.path = paths{best_idx};
-            
-
-            if isempty(self.prev)
-                self.prev = [self.node];
+        function P = path_planner(self)
+            % find frontier points
+            self.policy.frontier = find_candidate_points(self);
+            paths = cell(1, length(self.policy.frontier));
+            % create paths to frontiers
+            for i = 1:length(self.policy.frontier)
+                path = self.map.shortestpath(self.node, ...
+                                             self.policy.frontier{i});
+                path(1) = [];   
+                paths{i} = path;
             end
-            n = self.map.neighbors(num2str(self.node));
-            n = cellfun(@str2num, n);
-            candidates = setdiff(n, self.prev);
-            %next = candidates(randi(numel(candidates)));
-            next = candidates(1);
-            self.prev(end+1) = next;
-            path = next;
-            
-            %options = nlmpcmoveopt;
-            %options.Parameters = {self};
-            %[~,~,info] = nlmpcmove(self.policy, self.state_space(), self.node, [], [], options);
+            % allocate optimal tasks to the paths
+
+            actions = cell(1, length(paths));
+            utilites = zeros(1, length(paths));
+            for i = 1:length(paths)
+                if ~isempty(paths{i})
+                    [actions{i}, utilities(i)] = ga_task_allocator(self, paths{i});
+                end
+            end
+            [~, idx] = max(utilities,[],"all");
+
+
+            P = paths{idx};
         end
        
         %% Plotter
@@ -314,16 +270,36 @@ classdef Robot < handle
                 self.visible_sensor.plot(gui);
                 self.remote_sensor.plot(gui);
                 self.handles.pos_world = plot(gui.world, ...
-                                             self.world.X(self.node), ...
-                                             self.world.Y(self.node), ...
+                                             self.world.X(str2double(self.node)), ...
+                                             self.world.Y(str2double(self.node)), ...
                                              '.', 'Color', self.color, ...
                                              'MarkerSize', 20);
+                % policy
+                self.policy.handles.frontier = scatter(gui.world, ...
+                                                        [], ...
+                                                        [], ...
+                                                        20, ...
+                                                        'Marker', 'o', ...
+                                                        'MarkerFaceColor', 'red', ...
+                                                        'MarkerFaceAlpha', 1);
             end
             self.visible_sensor.plot();
             self.remote_sensor.plot();
             set(self.handles.pos_world, ...
-                'XData', self.world.X(self.node), ...
-                'YData', self.world.Y(self.node));
+                'XData', self.world.X(str2double(self.node)), ...
+                'YData', self.world.Y(str2double(self.node)) ...
+            );
+            % policy
+            p = self.world.environment.findnode(self.policy.frontier);
+            if isempty(p)
+                set(self.policy.handles.frontier, ...
+                    'XData', [], ...
+                    'YData', []);
+            else
+                set(self.policy.handles.frontier, ...
+                    'XData', self.world.X(p), ...
+                    'YData', self.world.Y(p));
+            end
         end
     end
 end

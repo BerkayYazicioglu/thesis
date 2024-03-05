@@ -8,15 +8,15 @@ world:
 
 sensors:
     remote_sensor:
-        t_s: 00:00
-        d_energy: 0.01
+        t_s: 05:00
+        d_energy: 0
         features: [victim]
         remote_sensing: true
         color: magenta
     
     visible_sensor:
-        t_s: 00:00
-        d_energy: 0.01
+        t_s: 01:00
+        d_energy: 0
         features: [terrain, destruction, population]
         remote_sensing: false
         color: green
@@ -27,7 +27,7 @@ mission:
     robots:
         ugv:
             count: 1
-            p_init: [[350, 375]]
+            p_init: [[25, 25]]
             id: ugv
             max_step: 1
             height: 1
@@ -40,8 +40,8 @@ mission:
             color: black
         
         uav:
-            count: 1
-            p_init: [[75, 375]]
+            count: 0
+            p_init: [[20, 375]]
             id: uav
             max_step: 100
             height: inf
@@ -56,6 +56,10 @@ mission:
 tasks:
     explore:
         pi: visible_sensor
-        spawn_thresh: 0.3
-        kill_thresh: 0.7
+        spawn: 0
+        kill:  0.7
+    search:
+        pi: remote_sensor
+        spawn: 0.5
+        kill: 0.9
 

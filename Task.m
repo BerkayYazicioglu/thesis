@@ -5,7 +5,7 @@ classdef Task
     properties
         type string;
         pi string;
-        node double;
+        node char;
         location (1,2); % (m) [x y]
         robot string = "none";
         % assignable logical;
@@ -21,35 +21,44 @@ classdef Task
         function self = Task(params)
             % params
             % type       -> (str) type of task (explore, search, patrol, charge)
-            % pi         -> (str) related sensor 
-            % node       -> (int) node on the graph
+            % node       -> (char) node on the graph
             % location   -> [x, y] in coordinates
-            % spawn      -> (float) threshold for spawning the task
-            % kill       -> (float) threshold for killing the task
-            % assignable -> [1,|robots|] logical array of assignable robots
             % t_init     -> (duration) spawn time
+            % weight     -> weight value of the task
+            % config._.spawn      -> (float) threshold for spawning the task
+            % config._.kill       -> (float) threshold for killing the task
+            % config._.pi         -> (str) related sensor 
+            % assignable -> [1,|robots|] logical array of assignable robots
 
             self.type = params.type;
             self.node = params.node;
             self.location = params.location;
-            self.pi = params.pi;
+            self.t_init = params.t_init;
+            self.weight = params.weight;
 
             % self.assignable = params.assignable;
-            self.kill = params.kill;
-            self.spawn = params.spawn;
-            self.t_init = params.t_init;
+            self.pi = params.configs.pi;
+            self.spawn = params.configs.spawn;
+            self.kill = params.configs.kill;
         end
 
         %% Perform the task if applicable
-        function outcome = perform_task(self, robot)
+        % simplify -> False if task allocation should be checked
+        %          -> True if performing only depends on the capability
+        function outcome = perform_task(self, robot, simplify)
+            arguments
+                self Task
+                robot Robot
+                simplify logical = false;
+            end
             % check if the robot is asssigned to this task 
-            if self.robot == robot.id
+            if (self.robot == robot.id) || simplify
                 % get the capability
-                c = self.capability(robot, robot.node);
+                c = self.capability(robot);
                 if c >= self.kill
                     % the robot is capable to perform the task
                     outcome = true;
-                else
+                else 
                     % the robot is incapable
                     outcome = false;
                 end
@@ -60,44 +69,69 @@ classdef Task
 
         %% Capability of a robot handling this task from a given node 
         function c = capability(self, robot, node)
-            source_vec = [robot.world.X(node)
-                          robot.world.Y(node)];
-            target_vec = [robot.world.X(self.node)
-                          robot.world.Y(self.node)];
-            distance = norm(target_vec - source_vec);
-            
-            if self.type == "explore"
-                if distance > robot.visible_sensor.max_range
-                    c = 0;
-                    return
+            arguments
+                self Task
+                robot Robot
+                node char = '';
+            end
+            if strcmp(node, '')
+                % get the measured capability
+                if (self.type == "explore") || (self.type == "search")
+                    % is the robot node in the current measurements
+                    [~,idx] = ismember(str2double(robot.node), ...
+                                       robot.(self.pi).measurements.nodes);
+                    if idx == 0
+                        % node was not measured
+                        c = 0;
+                        return;
+                    else
+                        % get the uncertainty of the measurement
+                        epsilon = robot.(self.pi).measurements.uncertainty(idx);
+                        c = 1 - epsilon;
+                        return;
+                    end
                 end
-                % calculate the direct line from source to target
-                [source_row, source_col] = ind2sub(robot.world.grid_dim, node);
-                [target_row, target_col] = ind2sub(robot.world.grid_dim, self.node);
-                [line_x, line_y] = bresenham(source_row, ...
-                                             source_col, ...
-                                             target_row, ...
-                                             target_col);
-                line = sub2ind(robot.world.grid_dim, line_x(:), line_y(:));
-                % find the points along the line
-                % using the ground truth here to speed up, since errors are
-                % not implemented and the map should already contain most
-                % of the nodes along the line
-                terrain = robot.world.environment.Nodes.terrain(line);
-                % remove NaN, estimate that they can be seen
-                % terrain = rmmissing(terrain);
-                % find if there is a peak higher than the sensor height
-                if all(terrain < robot.height + robot.world.environment.Nodes.terrain(node)) 
-                    % all points along the line are below current height
-                    c = 1 - robot.visible_sensor.epsilon(distance);
-                    return
-                elseif max(terrain) <= robot.world.environment.Nodes.terrain(node)
-                    % find if the there is an obstruction on the sight
-                    c = 1 - robot.visible_sensor.epsilon(distance);
-                    return
-                else
-                    c = 0;
-                    return
+            else
+                % calculate the capability estimation
+                if self.type == "explore"
+                    % find the direct line from source to target
+                    [s_row, s_col] = ind2sub(robot.world.grid_dim, str2double(node));
+                    [t_row, t_col] = ind2sub(robot.world.grid_dim, str2double(self.node));
+                    point = [t_row t_col] - [s_row s_col];
+                    % find the corresponding perimeter point  
+                    [~, idx] = ismember(point, robot.(self.pi).perimeter, 'rows');
+                    if idx == 0
+                        c = 0;
+                        return
+                    end
+                    line = robot.visible_sensor.FoV_rays{idx};
+                    epsilon = line(end, 3);
+                    line = arrayfun(@num2str, ...
+                                    line(:, 1:2), ...
+                                    'UniformOutput', ...
+                                    false);
+                    idx = robot.map.findnode(line);
+                    idx = idx(idx ~= 0);
+                    terrain = robot.map.Nodes.terrain(idx);
+                    if any(terrain > robot.height + robot.world.environment.Nodes.terrain(str2double(node)))
+                        % line of sight is obstructed
+                        c = 0;
+                        return
+                    end
+                    % line of sight is not obstructed (by the known values)
+                    c = 1 - epsilon;
+                elseif self.type == "search"
+                    % check if the node is in the measurement range
+                    [s_row, s_col] = ind2sub(robot.world.grid_dim, str2double(node));
+                    [t_row, t_col] = ind2sub(robot.world.grid_dim, str2double(self.node));
+                    point = [t_row t_col] - [s_row s_col];
+                    [~, idx] = ismember(point, robot.(self.pi).FoV(:,1:2), 'rows');
+                    if idx == 0
+                        c = 0;
+                        return
+                    end
+                    epsilon = robot.(self.pi).FoV(idx, 3);
+                    c = 1 - epsilon;
                 end
             end
         end

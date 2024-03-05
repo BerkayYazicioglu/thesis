@@ -92,9 +92,9 @@ classdef World < handle
         end
 
         %% plotter
-        function plot(self, t, gui)
+        function plot(self, gui)
             persistent handles
-            if nargin > 2
+            if nargin > 1
                 handles.terrain = contourf(gui.world, ...
                                            self.X, ...
                                            self.Y, ...
@@ -120,29 +120,6 @@ classdef World < handle
                                           'MarkerEdgeColor', 'black', ...
                                           'MarkerFaceColor', 'flat'); 
             end
-            v_color = zeros(length(self.victims), 3);
-            for v = 1:length(self.victims)
-                victim = self.victims{v};
-                s = victim.get_health(t);
-                if victim.phi_det
-                    color = victim.color_det;
-                elseif s > victim.sigma_crit
-                    color = victim.color_init;
-                else
-                    color = victim.color_crit;
-                end
-                v_color(v, :) = color;
-            end
-            set(handles.victims, 'CData', v_color) 
-    
-            % plot PI over threshold
-            % PoI_x = self.X(self.PI_map > self.PI_threshold);
-            % PoI_y = self.Y(self.PI_map > self.PI_threshold);
-            % PoI = self.PI_map(self.PI_map > self.PI_threshold);
-            % 
-            % wp = scatter(PoI_x, PoI_y, 10, 'red', 'filled');
-            % wp.AlphaData = PoI;
-            % wp.MarkerFaceAlpha = 'flat';
         end
     end
 end

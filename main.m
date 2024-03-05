@@ -3,6 +3,8 @@ clc
 clearvars -except gui
 close
 
+addpath('utils/gui');
+
 %% Get config
 settings = yaml.loadFile('config.yaml');
 
@@ -11,15 +13,12 @@ if ~exist('gui', 'Var')
 elseif ~isvalid(gui)
     gui = simulation;
 end
-cla(gui.world,'reset')
-cla(gui.population,'reset')
-
-hold(gui.world,'on')
-hold(gui.population,'on')
+gui.restart.ButtonPushedFcn = @restart_cb;
+gui.robot_select.ValueChangedFcn = @select_robot_cb;
+gui.save.ButtonPushedFcn = @save_cb;
 
 %% Generate the mission
 mission = Mission(settings);
-
 mission.plot(gui);
 
 while mission.t <= mission.t_end 
@@ -67,3 +66,12 @@ end
 % end
 % 
 % close(v);
+
+
+
+
+
+
+
+
+

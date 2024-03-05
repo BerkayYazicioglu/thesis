@@ -7,7 +7,7 @@ classdef Mission < handle
         robots cell = {};
         map graph = graph;
         t duration = seconds(0);
-        tasks GlobalTasks;
+        tasks TaskManager;
 
         N_det uint32 {mustBePositive};
         N_res uint32 {mustBePositive};
@@ -19,10 +19,8 @@ classdef Mission < handle
         function self = Mission(config)
             self.world = World(config.world);
             self.t_end = duration(config.mission.t_end);
-            self.tasks = GlobalTasks(config.tasks, ...
-                                     self.world, ...
-                                     self.map, ...
-                                     self.t);
+            self.tasks = TaskManager(config.tasks, ...
+                                     self.world);
             % populate robots
             k = 1;
             types = fieldnames(config.mission.robots);
@@ -33,21 +31,18 @@ classdef Mission < handle
                     r_params.map_features = config.mission.map_features;
                     self.robots{k} = Robot(r_params, config.sensors, self.world, self.tasks);
                     self.robots{k}.place(cell2mat(r_params.p_init{i}));
+                    self.robots{k}.perform("explore", true);
                     self.map = self.robots{k}.update_maps(self.map);
                     k = k+1;
                 end
             end
-            % populate global task set
-            new_tasks = self.tasks.spawn_tasks(self.map, self.t);
-            for i = 1:length(new_tasks)
-                self.tasks.add_task(new_tasks{i});
-            end
-            % validate policy
-            for i = 1:length(self.robots)
-                x = self.robots{i}.state_space();
-                u = self.robots{i}.node;
-                validateFcns(self.robots{i}.policy, x, u, [], self.robots(i));
-            end
+
+            % % validate policy
+            % for i = 1:length(self.robots)
+            %     x = self.robots{i}.state_space();
+            %     u = self.robots{i}.node;
+            %     validateFcns(self.robots{i}.policy, x, u, [], self.robots(i));
+            % end
         end
 
         %% run for the next time step
@@ -64,23 +59,6 @@ classdef Mission < handle
             self.map = self.robots{idx}.run(self.map);
             self.t = new_time;
 
-            % get tasks in the vicinity of the current robot
-            % field = self.robots{idx}.visible_sensor.get_all(self.robots{idx}.node, ...
-            %                                                self.world);
-                
-            % for i = 1:length(field)
-            %     f = field(i);
-            %     if self.tasks{f}.type == "none"
-            %         continue
-            %     elseif self.tasks{f}.robot == "none"
-            %         c = self.tasks{f}.capability(self.robots{idx}, self.robots{idx}.node);
-            %         if c >= 0.99
-            %            self.tasks{f}.robot = self.robots{idx}.id;
-            %            % WIP
-            %            self.tasks{f}.type = "none";
-            %         end
-            %    end 
-            % end
             disp(toc);
         end
       
@@ -88,7 +66,13 @@ classdef Mission < handle
         function plot(self, gui)
             persistent handles
             if nargin > 1
-                self.world.plot(self.t, gui);
+                cla(gui.world,'reset')
+                cla(gui.population,'reset')
+                
+                hold(gui.world,'on')
+                hold(gui.population,'on')
+
+                self.world.plot(gui);
                 robot_ids = cell(1, length(self.robots));
                 for i = 1:length(self.robots)
                     self.robots{i}.plot(gui);
@@ -106,8 +90,12 @@ classdef Mission < handle
                 handles.map_select = gui.map_select;
                 handles.map_select.Items = ["global", robot_ids];
                 handles.map_select.Value = "global";
+                gui.robot_select.Items = ["", robot_ids];
+                gui.robot_select.Value = "";
+                gui.x_init.Limits = [0, self.world.world_dim(1)];
+                gui.y_init.Limits = [0, self.world.world_dim(2)];
             end
-            self.world.plot(self.t);
+            self.world.plot();
             stdout = string(self.t, "hh:mm:ss") + " |";
             for i = 1:length(self.robots)
                 self.robots{i}.plot();
@@ -125,11 +113,17 @@ classdef Mission < handle
             c(m) = 0;
             for i = 1:length(self.robots)
                 if self.robots{i}.id == handles.map_select.Value
-                    % get only the accessible nodes
-                    [bin, binsize] = conncomp(self.robots{i}.map);
-                    accessible = binsize(bin) == max(binsize);
-                    accessible = cellfun(@str2num, self.robots{i}.map.Nodes.Name(accessible));
-                    c(~accessible) = 0.7;
+                    % get only the nonaccessible nodes
+                    [bin, ~] = conncomp(self.robots{i}.map);
+                    accessible = 0 * bin;
+                    for j = 1:length(self.robots)
+                        robot_node = self.robots{i}.map.findnode(self.robots{j}.node);
+                        robot_bin = bin(robot_node);
+                        accessible = accessible | ...
+                                     (bin == robot_bin);
+                    end
+                    blocked = cellfun(@str2num, self.robots{i}.map.Nodes.Name(~accessible));
+                    c(blocked) = 0.7;
                 else
                     continue
                 end
