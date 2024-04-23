@@ -6,9 +6,7 @@ classdef TaskManager < handle
         items dictionary = dictionary();
         world World;
 
-        % explore params
         configs struct; % task-dependent configurations
-        explore_weight double = 0.1;
     end
 
     %% Methods
@@ -19,14 +17,56 @@ classdef TaskManager < handle
                 self.configs = params;
                 % generate explore tasks for all graph nodes
                 for i = 1:world.environment.numnodes()
-                    self.spawn("explore", 0, ...
+                    self.spawn("explore", ...
+                               0, ...
                                seconds(0), ...
                                num2str(i), ...
-                               self.explore_weight);
+                               self.configs.explore.weight);
                 end
             end
         end
         
+        %% Run for a given action
+        function run(self, robot, action, dt, simplify)
+            arguments
+                self TaskManager
+                robot Robot
+                action string
+                dt duration
+                simplify logical = false;
+            end
+
+            if action == "none"
+                return
+            end
+            sensor = self.configs.(action).pi;
+            % perform applicable tasks
+            for i = 1:length(robot.(sensor).measurements.nodes)
+                task_node = num2str(robot.(sensor).measurements.nodes(i));
+                if self.items.isKey(task_node)
+                    % there is a task at the node, try to perform
+                    if self.items(task_node).type == action
+                        outcome = self.items(task_node).perform_task(robot, simplify);
+                        if outcome
+                            % if the task could be done, remove it
+                            self.kill(task_node); 
+                            if action == "explore"
+                                % exploration -> search depending on the PI
+                                PI = evalfis(robot.PI_model, ...
+                                            [robot.(sensor).measurements.destruction(i) ...
+                                             robot.(sensor).measurements.population(i)]);
+                                self.spawn("search", ...
+                                           PI, ...
+                                           robot.time + dt, ...
+                                           task_node, ...
+                                           PI);
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
         %% Spawn a task
         function spawn(self, type, condition, t_init, node, weight)
             arguments
@@ -53,30 +93,6 @@ classdef TaskManager < handle
         function kill(self, node)
             if self.items.isKey(node)
                 self.items(node) = [];
-            end
-        end
-
-        %% Plotter
-        function plot(self, gui)
-            persistent handles
-            if nargin > 1
-                handles.world = scatter(gui.world, ...
-                                        [], ...
-                                        [], ...
-                                        20, ...
-                                        'Marker', 'd', ...
-                                        'MarkerEdgeColor', 'magenta', ...
-                                        'MarkerFaceAlpha', 0);
-            end
-            locs = [];
-            tasks = self.items.values;
-            for i = 1:length(tasks)
-                if tasks(i).type == "search"
-                    locs = [locs; tasks(i).location];
-                end
-            end
-            if ~isempty(locs)
-                set(handles.world, 'XData', locs(:, 1), 'YData', locs(:, 2)); 
             end
         end
     end

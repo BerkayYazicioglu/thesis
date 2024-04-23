@@ -1,32 +1,31 @@
 %%
 clc
-clearvars -except gui
+clearvars -except sim_obj
 close
-
-addpath('utils/gui');
+addpath('utils')
+addpath('utils/optimizers')
 
 %% Get config
 settings = yaml.loadFile('config.yaml');
 
-if ~exist('gui', 'Var')
-    gui = simulation;
-elseif ~isvalid(gui)
-    gui = simulation;
+if ~exist('sim_obj', 'Var')
+    sim_obj = simulation;
+elseif ~isvalid(sim_obj)
+    sim_obj = simulation;
 end
-gui.restart.ButtonPushedFcn = @restart_cb;
-gui.robot_select.ValueChangedFcn = @select_robot_cb;
-gui.save.ButtonPushedFcn = @save_cb;
 
 %% Generate the mission
-mission = Mission(settings);
-mission.plot(gui);
+
+world = World(settings.world);
+mission = Mission(settings.mission, world);
+gui = Gui(settings.mission.gui, sim_obj, mission);
+gui.run();
 
 while mission.t <= mission.t_end 
 %    try 
-        waitfor(gui.start, 'Value', 'On'); 
+        waitfor(sim_obj.start, 'Value', 'On'); 
         mission.run();
-        mission.plot();
-        drawnow
+        gui.run();
 %    catch 
 %        break; 
 %    end

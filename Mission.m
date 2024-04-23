@@ -7,29 +7,32 @@ classdef Mission < handle
         robots cell = {};
         map graph = graph;
         t duration = seconds(0);
+        t_end duration; 
         tasks TaskManager;
 
-        N_det uint32 {mustBePositive};
-        N_res uint32 {mustBePositive};
-        t_end duration; 
+        N_det cell;
+
+        data 
+        settings;
     end
 
     %% Methods
     methods
-        function self = Mission(config)
-            self.world = World(config.world);
-            self.t_end = duration(config.mission.t_end);
-            self.tasks = TaskManager(config.tasks, ...
-                                     self.world);
+        function self = Mission(config, world)
+            self.settings = config;
+            self.world = world;
+            self.t_end = duration(config.t_end);
+            self.tasks = TaskManager(config.tasks, self.world);
             % populate robots
             k = 1;
-            types = fieldnames(config.mission.robots);
+            types = fieldnames(config.robots);
             for r = 1:length(types)
                 type = types{r};
-                r_params = config.mission.robots.(type);
+                r_params = config.robots.(type);
                 for i = 1:r_params.count
-                    r_params.map_features = config.mission.map_features;
-                    self.robots{k} = Robot(r_params, config.sensors, self.world, self.tasks);
+                    r_params.map_features = config.map_features;
+                    r_params.id = r_params.id + "_" + num2str(i);
+                    self.robots{k} = Robot(r_params, self.world, self.tasks);
                     self.robots{k}.place(cell2mat(r_params.p_init{i}));
                     self.robots{k}.perform("explore", true);
                     self.map = self.robots{k}.update_maps(self.map);
@@ -37,19 +40,16 @@ classdef Mission < handle
                 end
             end
 
-            % % validate policy
-            % for i = 1:length(self.robots)
-            %     x = self.robots{i}.state_space();
-            %     u = self.robots{i}.node;
-            %     validateFcns(self.robots{i}.policy, x, u, [], self.robots(i));
-            % end
+            % data
+            self.data.t = [];
+            self.data.victim_count = [];
+            self.data.robot_locs = cell(size(self.robots));
+            self.data.utility = [];
         end
 
         %% run for the next time step
         function run(self)
             % get the next time step from the robots
-            tic;
-
             r_times = [];
             for i = 1:length(self.robots)
                 r_times = [r_times self.robots{i}.time];
@@ -58,78 +58,59 @@ classdef Mission < handle
 
             self.map = self.robots{idx}.run(self.map);
             self.t = new_time;
+            self.refresh(self.robots{idx});
 
-            disp(toc);
+            % save analysis data and manage found victims
+            self.data.t = [self.data.t seconds(self.t)];
+
+            for i = 1:length(self.robots)
+                self.data.robot_locs{i} = [self.data.robot_locs{i} str2double(self.robots{i}.node)];
+            end
+
+            if ~isempty(self.robots{idx}.remote_sensor.measurements)
+                victim_idx = find(self.robots{idx}.remote_sensor.measurements.victim);
+                victim_idx = self.robots{idx}.remote_sensor.measurements.victim(victim_idx);
+                % new victims found
+                if ~isempty(victim_idx)
+                     self.N_det = [self.N_det self.world.victims(victim_idx)];
+                end
+            end
+            self.data.victim_count = [self.data.victim_count length( self.N_det)];
+            self.data.utility = padcat(self.robots{idx}.policy.data.analysis{:})';
         end
       
-        %% plotter
-        function plot(self, gui)
-            persistent handles
-            if nargin > 1
-                cla(gui.world,'reset')
-                cla(gui.population,'reset')
-                
-                hold(gui.world,'on')
-                hold(gui.population,'on')
+        %% refresh settings 
+        function refresh(self, robot)
+            self.t_end = duration(self.settings.t_end);
+            % task manager settings
+            self.tasks.configs = self.settings.tasks;
+            % robot sensor and policy settings
+            id = strsplit(robot.id, '_');
+            type = id{1};
+            idx = str2double(id{2});
+            r_settings = self.settings.robots.(type);
+            rs_flag = robot.remote_sensor.max_range ~= ...
+                      r_settings.sensors.remote_sensor.max_range;
+            vs_flag = robot.visible_sensor.max_range ~= ...
+                      r_settings.sensors.visible_sensor.max_range;
+            p_flag = robot.policy.configs.prediction_horizon ~= ...
+                     r_settings.policy.prediction_horizon;
 
-                self.world.plot(gui);
-                robot_ids = cell(1, length(self.robots));
-                for i = 1:length(self.robots)
-                    self.robots{i}.plot(gui);
-                    robot_ids{i} = self.robots{i}.id;
-                end
-                self.tasks.plot(gui);
-                c = zeros(size(self.world.X, 1), ...
-                          size(self.world.X, 2), ...
-                          3);
-                handles.map_world = imagesc(gui.world, ...
-                                            [self.world.X(1,1) self.world.X(1,end)], ...
-                                            [self.world.Y(1,1) self.world.Y(end,1)], ...
-                                            c);
-                handles.system = gui.system;
-                handles.map_select = gui.map_select;
-                handles.map_select.Items = ["global", robot_ids];
-                handles.map_select.Value = "global";
-                gui.robot_select.Items = ["", robot_ids];
-                gui.robot_select.Value = "";
-                gui.x_init.Limits = [0, self.world.world_dim(1)];
-                gui.y_init.Limits = [0, self.world.world_dim(2)];
+            if rs_flag
+                robot.remote_sensor = Sensor(r_settings.sensors.remote_sensor, ...
+                                             robot.world, ...
+                                             robot.directions);
             end
-            self.world.plot();
-            stdout = string(self.t, "hh:mm:ss") + " |";
-            for i = 1:length(self.robots)
-                self.robots{i}.plot();
-                stdout = stdout + " " + self.robots{i}.id + " : " + ...
-                                        num2str(self.robots{i}.energy) + "% |";
+            if vs_flag
+                robot.visible_sensor = Sensor(r_settings.sensors.visible_sensor, ...
+                                              robot.world, ...
+                                              robot.directions);
             end
-
-            % tasks
-            self.tasks.plot();
-           
-            % maps
-            c = 0.4 * ones(size(self.world.X, 1), ...
-                               size(self.world.X, 2));
-            m = cellfun(@str2num, self.map.Nodes.Name);
-            c(m) = 0;
-            for i = 1:length(self.robots)
-                if self.robots{i}.id == handles.map_select.Value
-                    % get only the nonaccessible nodes
-                    [bin, ~] = conncomp(self.robots{i}.map);
-                    accessible = 0 * bin;
-                    for j = 1:length(self.robots)
-                        robot_node = self.robots{i}.map.findnode(self.robots{j}.node);
-                        robot_bin = bin(robot_node);
-                        accessible = accessible | ...
-                                     (bin == robot_bin);
-                    end
-                    blocked = cellfun(@str2num, self.robots{i}.map.Nodes.Name(~accessible));
-                    c(blocked) = 0.7;
-                else
-                    continue
-                end
+            if p_flag
+                r_settings.policy.normalization = robot.remote_sensor.t_s ...
+                                                / robot.visible_sensor.t_s;
+                robot.policy = Policy(r_settings.policy, self.tasks, self.world);
             end
-            set(handles.map_world, 'AlphaData', c);
-            set(handles.system, 'Value', stdout);
         end
     end
 end

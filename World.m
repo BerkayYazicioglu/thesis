@@ -14,6 +14,8 @@ classdef World < handle
         victims (1,:) cell;
         environment graph = graph; % 8-connected graph where the robots move
         X, Y (:, :) double {mustBeReal, mustBeNonNan}; % meshgrid for x,y coordinates (m)
+
+        params
     end
 
     %% Methods
@@ -23,7 +25,7 @@ classdef World < handle
             if nargin < 1
                 return
             end
-            addpath('utils');
+            self.params = params;
             % load from file 
             data = jsondecode(fileread(params.data_file)); 
             
@@ -88,37 +90,6 @@ classdef World < handle
                  v_params.sigma_crit] = victim_health(params.victims, data.destruction(v_v));
                 
                 self.victims{n} = Victim(v_params);
-            end
-        end
-
-        %% plotter
-        function plot(self, gui)
-            persistent handles
-            if nargin > 1
-                handles.terrain = contourf(gui.world, ...
-                                           self.X, ...
-                                           self.Y, ...
-                                           reshape(self.environment.Nodes.terrain, self.grid_dim), ...
-                                           'FaceAlpha', 0.7); 
-                handles.population = contourf(gui.population, ...
-                                              self.X, ...
-                                              self.Y, ...
-                                              reshape(self.environment.Nodes.population, self.grid_dim), ...
-                                              'LineWidth', 0.1, ...
-                                              'FaceAlpha', 0.7);
-                v_loc = zeros(length(self.victims), 2);
-                v_size = zeros(length(self.victims), 1);
-                for v = 1:length(self.victims)
-                    v_loc(v, :) = self.victims{v}.location;
-                    v_size(v) = self.victims{v}.size;
-                end
-                handles.victims = scatter(gui.population, ...
-                                          v_loc(:, 1), ...
-                                          v_loc(:, 2), ...
-                                          v_size, ...
-                                          'Marker', 'd', ...
-                                          'MarkerEdgeColor', 'black', ...
-                                          'MarkerFaceColor', 'flat'); 
             end
         end
     end

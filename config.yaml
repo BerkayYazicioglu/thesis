@@ -4,47 +4,70 @@ world:
     victims:
         count: 50
         destruct_thresh: 0.3
-        t_avg: 01:00:00
-
-sensors:
-    remote_sensor:
-        t_s: 05:00
-        d_energy: 0
-        features: [victim]
-        remote_sensing: true
-        color: magenta
-    
-    visible_sensor:
-        t_s: 01:00
-        d_energy: 0
-        features: [terrain, destruction, population]
-        remote_sensing: false
-        color: green
+        t_avg: 02:00:00
 
 mission:
-    t_end: 01:00:00
+    t_end: 05:00:00
     map_features: [terrain]
+    gui:
+        policy_types: [random, brute, ga]
+        frontier_types: [all_frontier, 4_frontier, 8_frontier]
+        analysis_types: [heatmap, victim, utility]
+    tasks:
+        explore:
+            pi: visible_sensor
+            spawn: 0
+            kill:  0.7
+            weight: 0.1
+        search:
+            pi: remote_sensor
+            spawn: 0.5
+            kill: 0.9
     robots:
         ugv:
-            count: 1
-            p_init: [[25, 25]]
             id: ugv
+            count: 1
+            p_init: [[0,0], [0,0]]
+            heading: 2
             max_step: 1
             height: 1
             speed: 3
             crit_energy: 0
             energy_per_m: 0.01
-            remote_range: 10
-            visible_range: 50
             PI_model: PI_model.fis
             color: black
-        
+            policy:
+                type: brute
+                tradeoff: 2
+                action_list: [none, explore, search, both]
+                control_horizon: 5
+                prediction_horizon: 5
+                candidate_selection: 8_frontier
+                path_selection: shortest
+            sensors:
+                remote_sensor:
+                    t_s: 03:00
+                    d_energy: 0
+                    features: [victim]
+                    remote_sensing: true
+                    max_range: 10
+                    angle: 360
+                    color: magenta
+                visible_sensor:
+                    t_s: 00:30
+                    d_energy: 0
+                    features: [terrain, destruction, population]
+                    remote_sensing: false
+                    max_range: 50
+                    angle: 90
+                    color: green
         uav:
+            id: uav
             count: 0
             p_init: [[20, 375]]
-            id: uav
+            heading: 3
             max_step: 100
-            height: inf
+            height: 50
             speed: 5
             crit_energy: 0
             energy_per_m: 0.1
@@ -52,14 +75,31 @@ mission:
             visible_range: 75
             PI_model: PI_model.fis
             color: white
+            policy:
+                type: brute
+                tradeoff: 2
+                action_list: [none, explore, search, both]
+                control_horizon: 5
+                prediction_horizon: 5
+                candidate_selection: 8_frontier
+                path_selection: shortest
+            sensors:
+                remote_sensor:
+                    t_s: 03:00
+                    d_energy: 0
+                    features: [victim]
+                    remote_sensing: true
+                    range: 10
+                    angle: 360
+                    color: magenta
+                visible_sensor:
+                    t_s: 00:30
+                    d_energy: 0
+                    features: [terrain, destruction, population]
+                    remote_sensing: false
+                    range: 50
+                    angle: 90
+                    color: green
    
-tasks:
-    explore:
-        pi: visible_sensor
-        spawn: 0
-        kill:  0.7
-    search:
-        pi: remote_sensor
-        spawn: 0.5
-        kill: 0.9
+
 

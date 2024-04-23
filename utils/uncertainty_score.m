@@ -8,7 +8,8 @@ function epsilon = uncertainty_score(remote_sensing, max_range)
     syms d
     if remote_sensing
         % linear increase wrt distance 
-        epsilon(d) = d ./ max_range;
+        %epsilon(d) = d ./ max_range;
+        epsilon(d) = 0 ./ (d+100);
     else
         % piecewise increase wrt distance from the middle
         cutoff = 1/2;

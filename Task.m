@@ -42,6 +42,18 @@ classdef Task
             self.kill = params.configs.kill;
         end
 
+        %% Utility of the task for a robot if performed
+        function u = utility(self, robot)
+            u = 0;
+            if self.type == "explore"
+                u = self.weight;
+            elseif self.type == "search"
+                u = robot.policy.normalization * ...
+                    robot.policy.configs.tradeoff * ...
+                    self.weight;
+            end
+        end
+
         %% Perform the task if applicable
         % simplify -> False if task allocation should be checked
         %          -> True if performing only depends on the capability
@@ -54,7 +66,9 @@ classdef Task
             % check if the robot is asssigned to this task 
             if (self.robot == robot.id) || simplify
                 % get the capability
-                c = self.capability(robot);
+                [~, idx] = ismember(str2double(self.node), ...
+                                    robot.(self.pi).measurements.nodes);
+                c = 1 - robot.(self.pi).measurements.uncertainty(idx);
                 if c >= self.kill
                     % the robot is capable to perform the task
                     outcome = true;
@@ -64,75 +78,6 @@ classdef Task
                 end
             else
                 outcome = false;
-            end
-        end
-
-        %% Capability of a robot handling this task from a given node 
-        function c = capability(self, robot, node)
-            arguments
-                self Task
-                robot Robot
-                node char = '';
-            end
-            if strcmp(node, '')
-                % get the measured capability
-                if (self.type == "explore") || (self.type == "search")
-                    % is the robot node in the current measurements
-                    [~,idx] = ismember(str2double(robot.node), ...
-                                       robot.(self.pi).measurements.nodes);
-                    if idx == 0
-                        % node was not measured
-                        c = 0;
-                        return;
-                    else
-                        % get the uncertainty of the measurement
-                        epsilon = robot.(self.pi).measurements.uncertainty(idx);
-                        c = 1 - epsilon;
-                        return;
-                    end
-                end
-            else
-                % calculate the capability estimation
-                if self.type == "explore"
-                    % find the direct line from source to target
-                    [s_row, s_col] = ind2sub(robot.world.grid_dim, str2double(node));
-                    [t_row, t_col] = ind2sub(robot.world.grid_dim, str2double(self.node));
-                    point = [t_row t_col] - [s_row s_col];
-                    % find the corresponding perimeter point  
-                    [~, idx] = ismember(point, robot.(self.pi).perimeter, 'rows');
-                    if idx == 0
-                        c = 0;
-                        return
-                    end
-                    line = robot.visible_sensor.FoV_rays{idx};
-                    epsilon = line(end, 3);
-                    line = arrayfun(@num2str, ...
-                                    line(:, 1:2), ...
-                                    'UniformOutput', ...
-                                    false);
-                    idx = robot.map.findnode(line);
-                    idx = idx(idx ~= 0);
-                    terrain = robot.map.Nodes.terrain(idx);
-                    if any(terrain > robot.height + robot.world.environment.Nodes.terrain(str2double(node)))
-                        % line of sight is obstructed
-                        c = 0;
-                        return
-                    end
-                    % line of sight is not obstructed (by the known values)
-                    c = 1 - epsilon;
-                elseif self.type == "search"
-                    % check if the node is in the measurement range
-                    [s_row, s_col] = ind2sub(robot.world.grid_dim, str2double(node));
-                    [t_row, t_col] = ind2sub(robot.world.grid_dim, str2double(self.node));
-                    point = [t_row t_col] - [s_row s_col];
-                    [~, idx] = ismember(point, robot.(self.pi).FoV(:,1:2), 'rows');
-                    if idx == 0
-                        c = 0;
-                        return
-                    end
-                    epsilon = robot.(self.pi).FoV(idx, 3);
-                    c = 1 - epsilon;
-                end
             end
         end
     end
