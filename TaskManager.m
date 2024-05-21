@@ -27,12 +27,12 @@ classdef TaskManager < handle
         end
         
         %% Run for a given action
-        function run(self, robot, action, dt, simplify)
+        function run(self, robot, action, time, simplify)
             arguments
                 self TaskManager
                 robot Robot
                 action string
-                dt duration
+                time duration
                 simplify logical = false;
             end
 
@@ -57,7 +57,7 @@ classdef TaskManager < handle
                                              robot.(sensor).measurements.population(i)]);
                                 self.spawn("search", ...
                                            PI, ...
-                                           robot.time + dt, ...
+                                           time, ...
                                            task_node, ...
                                            PI);
                             end

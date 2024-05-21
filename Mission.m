@@ -33,9 +33,10 @@ classdef Mission < handle
                     r_params.map_features = config.map_features;
                     r_params.id = r_params.id + "_" + num2str(i);
                     self.robots{k} = Robot(r_params, self.world, self.tasks);
-                    self.robots{k}.place(cell2mat(r_params.p_init{i}));
-                    self.robots{k}.perform("explore", true);
-                    self.map = self.robots{k}.update_maps(self.map);
+                    self.map = self.robots{k}.place(seconds(0), ...
+                        cell2mat(r_params.p_init{i}), ...
+                        "explore", ...
+                        self.map);
                     k = k+1;
                 end
             end
@@ -50,15 +51,39 @@ classdef Mission < handle
         %% run for the next time step
         function run(self)
             % get the next time step from the robots
-            r_times = [];
-            for i = 1:length(self.robots)
-                r_times = [r_times self.robots{i}.time];
-            end
+            r_times = [cellfun(@(x) x.schedule.Time(1), self.robots)];
             [new_time, idx] = min(r_times);
+            
+            % multiple robots at the same time step
+            if new_time == 0
+                for i = 1:length(self.robots)
+                    self.refresh(self.robots{i});
+                    self.robots{i}.policy.run(self.robots{i}, new_time);
+                    self.robots{i}.schedule(1, :) = [];
+                end
+                r_times = [cellfun(@(x) x.schedule.Time(1), self.robots)];
+                [new_time, idx] = min(r_times);
+            else
+                self.refresh(self.robots{idx});
+                self.robots{idx}.policy.run(self.robots{idx}, new_time);
+            end
 
-            self.map = self.robots{idx}.run(self.map);
+            % check for conflicts to resolve
+            pos_idx = [cellfun(@(x)str2double(x.node), self.robots)];
+            pos = [self.world.X(pos_idx); self.world.Y(pos_idx)];
+            flags = find(vecnorm(pos - pos(:,idx)) <= self.settings.coordination_radius);
+            flags(idx) = 0;
+            if any(flags)
+                flags(idx) = 1;
+                % resolve conflicts using updated optimization caches
+                flagged_robots = [self.robots{find(flags)}];
+                [P, A, analysis] = cooperation_optimization(flagged_robots, 75);
+                r_times = [cellfun(@(x) x.schedule.Time(1), self.robots)];
+                [new_time, idx] = min(r_times);
+            end
+
+            self.map = self.robots{idx}.run(self.map, p, action);
             self.t = new_time;
-            self.refresh(self.robots{idx});
 
             % save analysis data and manage found victims
             self.data.t = [self.data.t seconds(self.t)];
@@ -75,7 +100,7 @@ classdef Mission < handle
                      self.N_det = [self.N_det self.world.victims(victim_idx)];
                 end
             end
-            self.data.victim_count = [self.data.victim_count length( self.N_det)];
+            self.data.victim_count = [self.data.victim_count length(self.N_det)];
             self.data.utility = padcat(self.robots{idx}.policy.data.analysis{:})';
         end
       
@@ -110,6 +135,8 @@ classdef Mission < handle
                 r_settings.policy.normalization = robot.remote_sensor.t_s ...
                                                 / robot.visible_sensor.t_s;
                 robot.policy = Policy(r_settings.policy, self.tasks, self.world);
+            else
+                robot.policy.configs = r_settings.policy;
             end
         end
     end

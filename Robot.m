@@ -8,7 +8,7 @@ classdef Robot < handle
 
         node char;
         heading double;
-        time duration;
+        schedule timetable;
         max_step double {mustBeReal, mustBeNonnegative}; % m 
         speed double {mustBeReal, mustBeNonnegative}; % m/s
         height double {mustBeNonnegative, mustBeReal}; % m
@@ -55,7 +55,6 @@ classdef Robot < handle
             self.id = params.id;
             self.color = params.color;
 
-            self.time = seconds(0);
             self.max_step = params.max_step;
             self.speed = params.speed;
             self.height = params.height;
@@ -79,17 +78,10 @@ classdef Robot < handle
         end
 
         %% Make a decision to take an action
-        function map = run(self, map)
-            [p, action] = self.policy.run(self);
+        function map = run(self, time, map)
             self.move(p);
-
             % perform action
-            [de, dt] = self.perform(action, true);
-            self.time = self.time + dt;
-            e = self.energy - de;
-            if e < 0  e = 0; end
-            self.energy = e;
-
+            self.perform(action, time, true);
             % update maps
             if action == "explore"
                 map = self.update_maps(map);
@@ -97,7 +89,7 @@ classdef Robot < handle
         end
 
         %% Place robot on the closest point to the given coordinates
-        function place(self, pos)
+        function map = place(self, Time, pos, action, map)
             dif_x = abs(self.world.X(1,:) - pos(1));
             dif_y = abs(self.world.Y(:,1) - pos(2));
 
@@ -105,28 +97,39 @@ classdef Robot < handle
             [~, i_y] = min(dif_y);
 
             self.node = num2str(sub2ind(self.world.grid_dim, i_y, i_x));
+
+            self.perform(action, Time, true);
+            self.schedule = timetable(Time, ...
+                                      str2double(self.node), ...
+                                      convertCharsToStrings(action), ...
+                                      {{}}, ...
+                'VariableNames', {'node', 'action', 'tasks'});
+            % update maps
+            if action == "explore"
+                map = self.update_maps(map);
+            end
         end
 
         %% Perform a given action
-        function [de, dt] = perform(self, action, simplify)
+        function perform(self, action, time, simplify)
             arguments
                 self Robot
                 action string
+                time duration
                 simplify logical = false;
             end
             de = 0;
-            dt = seconds(0);
 
             % perform actions
             if action == "explore"
-                [de, dt] = self.visible_sensor.measure(self.heading, ...
-                                                       self.height, ...
-                                                       str2double(self.node));
-                self.remote_sensor.measurements = table();
-            elseif action == "search"
-                [de, dt] = self.remote_sensor.measure(self.heading, ...
+                [de, ~] = self.visible_sensor.measure(self.heading, ...
                                                       self.height, ...
                                                       str2double(self.node));
+                self.remote_sensor.measurements = table();
+            elseif action == "search"
+                [de, ~] = self.remote_sensor.measure(self.heading, ...
+                                                     self.height, ...
+                                                     str2double(self.node));
                 self.visible_sensor.measurements = table();
             elseif action == "none"
                 self.remote_sensor.measurements = table();
@@ -134,7 +137,11 @@ classdef Robot < handle
             end
 
             % manage tasks
-            self.policy.tasks.run(self, action, dt, simplify);
+            self.policy.tasks.run(self, action, time, simplify);
+
+            e = self.energy - de;
+            if e < 0  e = 0; end
+            self.energy = e;
         end
 
         %% Update the global and local maps with the current measurements
@@ -208,11 +215,9 @@ classdef Robot < handle
                 error('Heading error');
             end
 
-            dt = distance / self.speed;
             e = self.energy - distance * self.energy_per_m;
             if e < 0  e = 0; end
             self.energy = e;
-            self.time = self.time + seconds(dt);
             self.node = target;
         end
     end

@@ -31,6 +31,13 @@ classdef Gui < handle
             self.gui.y_init.Limits = [0, mission.world.world_dim(2)];
             self.gui.tradeoff.Limits = [0, inf];
             self.gui.heading.Limits = [1, 8];
+            self.gui.prediction_horizon.Limits = [3, inf];
+            self.gui.control_horizon.Limits = [3, inf];
+            self.gui.policy_select.Items = [params.policy_types{:}];
+            self.gui.policy_select.Value = params.policy_types{1};
+            self.gui.frontier_select.Items = [params.frontier_types{:}];
+            self.gui.frontier_select.Value = params.frontier_types{1};             
+
             self.gui.logger.Value = "";
 
             robot_ids = cell(1, length(mission.robots));
@@ -159,13 +166,22 @@ classdef Gui < handle
             y = self.gui.x_init.Value;
             heading = self.gui.heading.Value;
             tradeoff = self.gui.tradeoff.Value;
+            policy = self.gui.policy_select.Value;
+            frontier = self.gui.frontier_select.Value;
+            pred_horizon = self.gui.prediction_horizon.Value;
+            control_horizon = min(pred_horizon, ...
+                self.gui.control_horizon.Value);
 
-            id = strsplit(val, '_');
+            id = strsplit(selection, '_');
             type = id{1};
             idx = str2double(id{2});
             self.mission.settings.robots.(type).p_init{idx} = {x, y};
             self.mission.settings.robots.(type).heading = heading;
-            self.mission.settings.robots.(type).tradeoff = tradeoff;
+            self.mission.settings.robots.(type).policy.tradeoff = tradeoff;
+            self.mission.settings.robots.(type).policy.type = policy;
+            self.mission.settings.robots.(type).policy.candidate_selection = frontier;
+            self.mission.settings.robots.(type).policy.prediction_horizon = pred_horizon;
+            self.mission.settings.robots.(type).policy.control_horizon = control_horizon;
         end
 
         %% robot selection callback
@@ -183,6 +199,11 @@ classdef Gui < handle
                self.gui.x_init.Value = p{1};
                self.gui.y_init.Value = p{2};
                self.gui.heading.Value = self.mission.settings.robots.(type).heading;
+               self.gui.tradeoff.Value = self.mission.settings.robots.(type).policy.tradeoff;
+               self.gui.policy_select.Value = self.mission.settings.robots.(type).policy.type;
+               self.gui.frontier_select.Value = self.mission.settings.robots.(type).policy.candidate_selection;
+               self.gui.prediction_horizon.Value = self.mission.settings.robots.(type).policy.prediction_horizon;
+               self.gui.control_horizon.Value = self.mission.settings.robots.(type).policy.control_horizon;
            end
         end
 
@@ -218,8 +239,8 @@ classdef Gui < handle
         end
         
         %% Refresh policy
-        function refresh_policy(self, robot, paths, status)
-            if ~isempty(robot.policy.data)
+        function refresh_policy(self, robot, n_paths, status)
+            if ~isempty(robot.policy.schedule)
                 set(self.handles.(robot.id).policy.path, ...
                     'XData', self.mission.world.X(str2double(robot.policy.data.path)), ...
                     'YData', self.mission.world.Y(str2double(robot.policy.data.path)));
@@ -233,8 +254,8 @@ classdef Gui < handle
                         'YData', self.mission.world.Y(p));
                 end
             end
-            self.gui.progress_bar.Limits = [1 length(paths)];
-            self.gui.progress_bar.MajorTicks = 1:length(paths);
+            self.gui.progress_bar.Limits = [1 n_paths];
+            self.gui.progress_bar.MajorTicks = 1:n_paths;
             self.gui.progress_bar.MinorTicks = [];
             self.gui.progress_bar.Value = status; 
             drawnow
@@ -289,10 +310,10 @@ classdef Gui < handle
                         'YData', robot.remote_sensor.measurements.coordinates(:, 2));
                 end
                 % policy
-                if ~isempty(robot.policy.data)
+                if ~isempty(robot.policy.schedule)
                     set(self.handles.(robot.id).policy.path, ...
-                        'XData', self.mission.world.X(str2double(robot.policy.data.path)), ...
-                        'YData', self.mission.world.Y(str2double(robot.policy.data.path)));
+                        'XData', self.mission.world.X(robot.policy.schedul.node), ...
+                        'YData', self.mission.world.Y(robot.policy.schedul.node));
                     if isempty(robot.policy.data.frontier)
                         set(self.handles.(robot.id).policy.frontier, ...
                             'XData', [], 'YData', []);

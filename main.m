@@ -4,6 +4,7 @@ clearvars -except sim_obj
 close
 addpath('utils')
 addpath('utils/optimizers')
+addpath('utils/path')
 
 %% Get config
 settings = yaml.loadFile('config.yaml');

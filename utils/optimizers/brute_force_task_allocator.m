@@ -1,61 +1,14 @@
 %% Optimal task allocation along a given path with brute force optimization
 % assuming path{1} ~= robot.node
 
-function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
-    
+function [actions, fval, times, tasks, analysis] = brute_force_task_allocator(robot, path)
     % caching with a digraph
     cache = digraph(0, ...
-                    table("0", 0, seconds(0), robot.energy, {[""]}, false, ...
-                   'VariableNames', {'Name', 'u', 't', 'e', 'tau', 'flag'}));
-
-    % preprocess the tasks that can be done along the way
-    candidates = table(1, "none", "0", 0, ...
-        'VariableNames', {'path_idx', 'action', 'task_node', 'u'});
+                    table("0", 0, seconds(0), robot.energy, {[""]}, {[]}, false, ...
+                   'VariableNames', {'Name', 'u', 't', 'e', 'tau', 'u_tau', 'flag'}));
     rf = rowfilter(["path_idx", "action"]);
-
-    time_loss = zeros(1, length(path));
-    energy_loss = zeros(1, length(path));
-    node = robot.node;
-    row = 1;
-
-    for i = 1:length(path)
-        vec = [robot.world.X(str2double(path{i})) - robot.world.X(str2double(node)) ...
-               robot.world.Y(str2double(path{i})) - robot.world.Y(str2double(node))];
-        vec_angle = mod(atan2(vec(2), vec(1)), 2*pi);
-        heading = find(round(robot.directions, 1) == round(vec_angle, 1));
-        % get task nodes
-        [nodes_v, ~] = unique(robot.visible_sensor.get_all(heading, str2double(path{i})));
-        [nodes_r, ~] = unique(robot.remote_sensor.get_all(heading, str2double(path{i})));
-
-        nodes_all = {nodes_v, nodes_r};
-        actions = {"explore", "search"};
-        for ii =  1:length(nodes_all)
-            nodes = arrayfun(@num2str, nodes_all{ii}, 'UniformOutput', false);
-            nodes = nodes(robot.policy.tasks.items.isKey(nodes));
-            for iii = 1:length(nodes)
-                task = robot.policy.tasks.items(nodes(iii));
-                cap = robot.policy.capability(robot, ...
-                                              path{i}, ...
-                                              heading, ...
-                                              task.node, ...
-                                              actions{ii});
-                if cap >= task.kill
-                    % task is estimated to be accomplishable
-                    candidates(row, :) = {i, ...
-                                          task.type, ...
-                                          task.node, ...
-                                          cap * task.utility(robot)};
-                    row = row + 1;
-                end
-            end
-        end
-        % calculate the timing between path points if no action is taken
-        edge = findedge(robot.world.environment, node, path{i});
-        distance = robot.world.environment.Edges(edge,:).Weight;
-        time_loss(i) = distance / robot.speed;
-        energy_loss(i) = distance * robot.energy_per_m;
-        node = path{i};
-    end
+    % preprocess the tasks that can be done along the way
+    [candidates, time_loss, energy_loss] = preprocess_path(robot, path);
 
     %% Fitness function
     % 1 -> no action
@@ -71,7 +24,12 @@ function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
             if ismember(next_state, children)
                 % next state is already cached
                 state = next_state;
-                u = cache.Nodes.u(cache.findnode(state));
+                idx = cache.findnode(state);
+                u = cache.Nodes.u(idx);
+                % if flagged, the branch is pruned
+                if cache.Nodes.flag(idx)
+                    break
+                end
             else
                 % the state needs to be calculated and cached
                 idx = cache.findnode(state);
@@ -79,8 +37,10 @@ function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
                 t = cache.Nodes.t(idx);
                 e = cache.Nodes.e(idx);
                 tau = cache.Nodes.tau(idx);
+                u_tau = cache.Nodes.u_tau(idx);
+                flag = cache.Nodes.flag(idx);
                 tau = tau{1};
-                flag = false;
+                u_tau = u_tau{1};
 
                 % movement
                 t = t + seconds(time_loss(j));
@@ -106,25 +66,35 @@ function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
                    
                     % get capabilities and weights of applicable tasks
                     for a = 1:length(action)
-                        sublist = candidates(rf.path_idx == idx & rf.action == action(a), :);
+                        sublist = candidates(rf.path_idx == j & rf.action == action(a), :);
                         [performed, p_idx] = setdiff(sublist.task_node, tau);
                         if ~isempty(p_idx)
+                            sublist_u = zeros(1, length(performed));
                             for k = 1:length(performed)
-                                u = u - sublist.u(p_idx(k)) / seconds(t);
+                                sublist_u(k) = sublist.u(p_idx(k));
+                                u = u - sublist_u(k) / seconds(t);
                             end
                             tau = [tau; performed(:)];
+                            u_tau = [u_tau; sublist_u(:)];
+                        % passivity
+                        elseif action(a) == "search"
+                            break
                         end
                     end
                     % check if there was any improvement
-                    flag = u == u_prev;
+                    flag = flag | u == u_prev;
                 end
                 % aggregrate the utility of closer points on the path
                 % u = u + u_prev;
                 % cache the next state
-                cache = cache.addnode(table(next_state, u, t, e, {tau}, flag, ...
-                                     'VariableNames', {'Name', 'u', 't', 'e', 'tau', 'flag'}));
+                cache = cache.addnode(table(next_state, u, t, e, {tau}, {u_tau}, flag, ...
+                                     'VariableNames', {'Name', 'u', 't', 'e', 'tau', 'u_tau', 'flag'}));
                 cache = cache.addedge(state, next_state, 1);
                 state = next_state;
+                % if flagged, no need to continue
+                if flag
+                    break
+                end
             end
         end
     end
@@ -141,9 +111,7 @@ function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
             x = str2num(char(num2cell(char(new_node))));
             fitness(x(2:end));
             % prune flagged children
-            if cache.Nodes.flag(findnode(cache, new_node))
-                cache = cache.rmnode(new_node);
-            else
+            if ~cache.Nodes.flag(findnode(cache, new_node))
                 leaf_nodes = [leaf_nodes new_node];
             end
         end
@@ -155,11 +123,16 @@ function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
     end
 
     % get final utilities
+    cache = rmnode(cache, cache.Nodes.Name(cache.Nodes.flag));
     idx = find(cellfun(@(y) strlength(y)==length(path)+1, cache.Nodes.Name));
     fval = 0;
     actions = robot.policy.configs.action_list(ones(1, length(path)));
+    times = seconds(time_loss);
+    tasks = {};
 
     % analysis data
+    analysis.cache = cache;
+    analysis.cache_idx = idx;
     analysis.utility = zeros(1, length(idx));
     analysis.log = "";
 
@@ -168,6 +141,9 @@ function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
         u = cache.Nodes.u(idx(ii));
         if u < fval
             fval = u;
+            t_idx = cache.findnode(cache.shortestpath('0', x));
+            times = seconds(cache.Nodes.t(t_idx(2:end)));
+            tasks = cache.Nodes.tau(t_idx(2:end));
             x = str2num(char(num2cell(char(x))));
             actions = robot.policy.configs.action_list(x(2:end));
         end
@@ -175,7 +151,6 @@ function [actions, fval, analysis] = brute_force_task_allocator(robot, path)
     end
     fval = -fval;
 
-    analysis.utility = sort(analysis.utility, 'descend');
     % calculate cache fullness
     cache_length = sum(cellfun(@(y) numel(y)==length(path)+1, cache.Nodes.Name));
     ratio = cache_length / length(robot.policy.configs.action_list)^length(path);

@@ -7,7 +7,9 @@ classdef Policy < handle
         
         horizon double % horizon relative nodes matrix 
         normalization double; % normalization constant between search and explore
+        schedule timetable
         counter = 0
+        cooperate_flag = false;
 
         configs
         data
@@ -28,9 +30,10 @@ classdef Policy < handle
 
             self.normalization = params.normalization;
 
-            self.data.path = {};
+            self.data.paths = {};
             self.data.frontier = {};
             self.data.analysis = {};
+            self.data.cache = {};
             
             self.horizon = [];
             for i = -self.configs.prediction_horizon:self.configs.prediction_horizon
@@ -49,44 +52,34 @@ classdef Policy < handle
         end
 
         %% Run for the current time step
-        function [p, action] = run(self, robot, override)
+        function run(self, robot, time)
             arguments
                 self Policy
                 robot Robot
-                override logical = false;
+                time duration
             end
-            if override
-                self.counter = 0;
-            end
-            if self.counter == 0
-                % need to replan the trajectory
-                [self.data.path, self.data.actions] = self.path_planner(robot);
-                if isempty(self.data.path)
-                    self.data.path = {robot.node};
-                    self.data.actions = {"none"};
-                end
-                self.counter = min(length(self.data.path), ...
-                                   self.configs.control_horizon);
-                self.data.path = self.data.path(1:self.counter);
-            end
-            p = self.data.path{end - self.counter + 1};
+            % need to replan the trajectory
+            self.cooperate_flag = false;
+            planned_schedule = self.path_planner(robot);
+            planned_schedule.Time = planned_schedule.Time + time;
+            planned_schedule = planned_schedule(...
+                1:min(height(planned_schedule), ...
+                self.configs.control_horizon),:);
 
-            action = self.data.actions{end - self.counter + 1};
-            self.counter = self.counter - 1;
+            robot.schedule = [robot.schedule; planned_schedule];
         end
 
         %% Path planner
-        function [P, A] = path_planner(self, robot)
+        function planned_schedule = path_planner(self, robot)
             gui = evalin('base', 'gui');   
-            P = {};
-            A = {};
-            log = "";
 
             % find frontier points
             self.data.frontier = find_candidate_points(robot, self.configs.candidate_selection);
             self.data.frontier = unique(self.data.frontier);
             self.data.analysis = {};
-            paths = cell(1, length(self.data.frontier));
+            self.data.paths = cell(1, length(self.data.frontier));
+            self.data.cache = cell(1, length(self.data.frontier));
+            self.data.cache_idx = cell(1, length(self.data.frontier));
 
             % create paths to frontiers
             for i = 1:length(self.data.frontier)
@@ -97,62 +90,60 @@ classdef Policy < handle
                 path(1) = [];  
                 % trim to maximum prediction horizon 
                 path = path(1:min(self.configs.prediction_horizon, length(path)));
-                paths{i} = path;
+                self.data.paths{i} = path;
             end
 
-            gui.refresh_policy(robot, paths, 1);
-            
-            if self.configs.type == "random"
-                % randomly select a path
-                idx = randi(length(paths));
-                P = paths{idx};
-                A = cell(size(P));
-                for i = 1:length(A)
-                    A{i} = "explore";
+            n_paths = length(self.data.paths);
+            gui.refresh_policy(robot, n_paths, 1);
+            optimizer_fcn = self.configs.type + "_task_allocator";
+           
+            % allocate optimal tasks to the paths
+            actions = cell(1, n_paths);
+            times = cell(1, n_paths);
+            planned_tasks = cell(1, n_paths);
+            utilities = zeros(1, n_paths);
+
+            tic
+            for i = 1:n_paths
+                if ~isempty(self.data.paths{i})
+                    gui.refresh_policy(robot, n_paths, i);
+
+                    [actions{i}, utilities(i), times{i}, planned_tasks{i}, analysis] = ...
+                        feval(optimizer_fcn, robot, self.data.paths{i});
+
+                    self.data.analysis = [self.data.analysis analysis.utility];
+                    self.data.cache{i} = analysis.cache;
+                    self.data.cache_idx{i} = analysis.cache_idx;
+
+                    gui.print(analysis.log);
                 end
+            end
+            toc
 
-            elseif self.configs.type == "brute"
-                % allocate optimal tasks to the paths
-                actions = cell(1, length(paths));
-                utilities = zeros(1, length(paths));
-                for i = 1:length(paths)
-                    if ~isempty(paths{i})
-                        gui.refresh_policy(robot, paths, i);
-
-                        [actions{i}, utilities(i), analysis] = brute_force_task_allocator(robot, paths{i});
-                        self.data.analysis = [self.data.analysis analysis.utility];
-
-                        gui.print(analysis.log);
-                    end
-                end
-                [~, idx] = max(utilities,[],"all");
-                log = sprintf('%s | actions: %s\n', robot.id, strjoin([actions{idx}{:}]));
+            [~, idx] = max(utilities,[],"all");
+            log = sprintf('%s | actions: %s\n', robot.id, strjoin([actions{idx}{:}]));
                 
-
-            % elseif self.type == "ga"
-            %     % allocate optimal tasks to the paths
-            %     actions = cell(1, length(paths));
-            %     utilites = zeros(1, length(paths));
-            %     for i = 1:length(paths)
-            %         if ~isempty(paths{i})
-            %             [actions{i}, utilities(i)] = ga_task_allocator(robot, paths{i});
-            %         end
-            %     end
-            %     [~, idx] = max(utilities,[],"all");
-            %     P = paths{idx};
-            %     A = actions{idx};
-            end
-
-            for i = 1:length(paths{idx})
+            P = {};
+            A = {};
+            T = [];
+            for i = 1:length(self.data.paths{idx})
                 if actions{idx}{i} == "both"
-                    P = [P; paths{idx}(i); paths{idx}(i)];
+                    P = [P; self.data.paths{idx}(i); self.data.paths{idx}(i)];
                     A = [A; {"search"; "explore"}];
+                    T = [T; times{idx}(i); times{idx}(i)];
                 else
-                    P = [P; paths{idx}(i)];
+                    P = [P; self.data.paths{idx}(i)];
                     A = [A; actions{idx}(i)];
+                    T = [T; times{idx}(i)];
                 end
             end
             A = cellfun(@(x) x{1}, A, 'UniformOutput', false);
+
+            planned_schedule = timetable(seconds(T), ...
+                                         [cellfun(@(x) str2double(x), P)] , ...
+                                         convertCharsToStrings(A), ...
+                                         arrayfun(@(x) {x}, planned_tasks{idx}), ...
+                'VariableNames', {'node', 'action', 'tasks'});
             gui.print(log);
         end
 
