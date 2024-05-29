@@ -1,19 +1,19 @@
 %% Search for best combined strategy from the most recent caches of given robots
 % assuming the caches are pruned and simplified
 
-function [P, A, analysis] = cooperation_optimization(robots, max_iter)
-    % recalculate all path planning if not at the starting node
-    flags = [arrayfun(@(x) convertCharsToStrings(x.node) ~= ...
-                           convertCharsToStrings(x.policy.data.start_node), ...
-                      robots)];
-    flagged_robots = robots(flags);
-    for i = 1:length(flagged_robots)
-        flagged_robots(i).policy.run(flagged_robots(i), true);
-    end
+function [planned_schedules, analysis] = cooperation_optimization(robots, max_iter)
+    for i = 1:length(robots)
+        % recalculate policy if the robots are in control period
+        offset = length(robots(i).policy.data.actions) - height(robots(i).schedule);
+        if offset
+            robots(i).schedule = timetable();
+            robots(i).policy.run(robots(i), robots(i).time);
+        end
 
-    caches = [arrayfun(@(x) x.policy.data.cache, robots, 'UniformOutput', false)];
-    cache_indices = [arrayfun(@(x) x.policy.data.cache_idx, robots, 'UniformOutput', false)];
-    cache_u = [arrayfun(@(x) x.policy.data.analysis, robots, 'UniformOutput', false)];
+        caches = [arrayfun(@(x) x.policy.data.cache, robots, 'UniformOutput', false)];
+        cache_indices = [arrayfun(@(x) x.policy.data.cache_idx, robots, 'UniformOutput', false)];
+        cache_u = [arrayfun(@(x) x.policy.data.analysis, robots, 'UniformOutput', false)];
+    end
 
     %% fitness function for multiple caches
     % 1 -> no action
@@ -79,11 +79,8 @@ function [P, A, analysis] = cooperation_optimization(robots, max_iter)
     plots = {'surrogateoptplot'};
     %plots = {};
     best_fval = 0;
-    best_x = [];
-    best_c = [];
 
-    A = cell(1, length(robots));
-    P = cell(1, length(robots));
+    planned_schedules = cell(1, length(robots));
 
     % analysis
     analysis = table({{}}, {{}}, 0,  ...
@@ -125,11 +122,19 @@ function [P, A, analysis] = cooperation_optimization(robots, max_iter)
         if fval <= best_fval
             best_fval = fval; 
             for j = 1:length(robots)
-                a = caches{j}{C(j)}.Nodes.Name( ...
-                    cache_indices{j}{C(j)}(x(j)));
+                a = caches{j}{C(j)}.Nodes.Name(cache_indices{j}{C(j)}(x(j)));
+                t_idx = caches{j}{C(j)}.findnode(caches{j}{C(j)}.shortestpath('0', a));
+                Times = seconds(caches{j}{C(j)}.Nodes.t(t_idx(2:end)));
+                tasks = caches{j}{C(j)}.Nodes.tau(t_idx(2:end));
                 a = str2num(char(num2cell(char(a))));
-                A{j} = robots(j).policy.configs.action_list(a(2:end));
-                P(j) = robots(j).policy.data.paths(C(j));
+                actions = robots(j).policy.configs.action_list(a(2:end));
+
+                planned_schedules{j} = ...
+                    timetable(seconds(Times) + robots(j).time, ...
+                              [cellfun(@(x) str2num(x), robots(j).policy.data.paths{C(j)})]', ...
+                              convertCharsToStrings([actions{:}])', ...
+                              arrayfun(@(x) {x}, tasks), ...
+                              'VariableNames', {'node', 'action', 'tasks'});
             end
         end
     end

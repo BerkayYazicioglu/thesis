@@ -1,6 +1,6 @@
 %%
 clc
-clearvars -except sim_obj
+clearvars -except sim_obj 
 close
 addpath('utils')
 addpath('utils/optimizers')
@@ -19,10 +19,11 @@ end
 
 world = World(settings.world);
 mission = Mission(settings.mission, world);
-gui = Gui(settings.mission.gui, sim_obj, mission);
+plots = axes();
+gui = Gui(settings.mission.gui, sim_obj, mission, plots);
 gui.run();
 
-while mission.t <= mission.t_end 
+while mission.schedule.Time(end) <= mission.t_end 
 %    try 
         waitfor(sim_obj.start, 'Value', 'On'); 
         mission.run();

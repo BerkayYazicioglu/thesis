@@ -7,8 +7,10 @@ classdef Robot < handle
         directions double = [0 pi/4 pi/2 3*pi/4 pi 5*pi/4 3*pi/2 7*pi/4];
 
         node char;
+        time duration;
         heading double;
         schedule timetable;
+        charge_s duration;
         max_step double {mustBeReal, mustBeNonnegative}; % m 
         speed double {mustBeReal, mustBeNonnegative}; % m/s
         height double {mustBeNonnegative, mustBeReal}; % m
@@ -54,6 +56,8 @@ classdef Robot < handle
             self.heading = params.heading;
             self.id = params.id;
             self.color = params.color;
+            self.time = seconds(0);
+            self.charge_s = duration(params.charge_s, 'InputFormat', 'mm:ss');
 
             self.max_step = params.max_step;
             self.speed = params.speed;
@@ -78,18 +82,20 @@ classdef Robot < handle
         end
 
         %% Make a decision to take an action
-        function map = run(self, time, map)
-            self.move(p);
+        function map = run(self, map)
+            self.move(num2str(self.schedule.node(1)));
             % perform action
-            self.perform(action, time, true);
+            self.time = self.schedule.Time(1);
+            self.perform(self.schedule.action(1), self.time, true);
             % update maps
-            if action == "explore"
+            if self.schedule.action{1} == "explore"
                 map = self.update_maps(map);
             end
+            self.schedule(1,:) = [];
         end
 
         %% Place robot on the closest point to the given coordinates
-        function map = place(self, Time, pos, action, map)
+        function map = place(self, time, pos, action, map)
             dif_x = abs(self.world.X(1,:) - pos(1));
             dif_y = abs(self.world.Y(:,1) - pos(2));
 
@@ -97,13 +103,9 @@ classdef Robot < handle
             [~, i_y] = min(dif_y);
 
             self.node = num2str(sub2ind(self.world.grid_dim, i_y, i_x));
+            self.time = time;
 
-            self.perform(action, Time, true);
-            self.schedule = timetable(Time, ...
-                                      str2double(self.node), ...
-                                      convertCharsToStrings(action), ...
-                                      {{}}, ...
-                'VariableNames', {'node', 'action', 'tasks'});
+            self.perform(action, time, true);
             % update maps
             if action == "explore"
                 map = self.update_maps(map);
@@ -126,18 +128,34 @@ classdef Robot < handle
                                                       self.height, ...
                                                       str2double(self.node));
                 self.remote_sensor.measurements = table();
+                % manage tasks
+                self.policy.tasks.run(self, action, time, simplify);
             elseif action == "search"
                 [de, ~] = self.remote_sensor.measure(self.heading, ...
                                                      self.height, ...
                                                      str2double(self.node));
                 self.visible_sensor.measurements = table();
+                % manage tasks
+                self.policy.tasks.run(self, action, time, simplify);
+            elseif action == "both"
+                [de1, ~] = self.visible_sensor.measure(self.heading, ...
+                                                      self.height, ...
+                                                      str2double(self.node));
+                [de2, ~] = self.remote_sensor.measure(self.heading, ...
+                                                     self.height, ...
+                                                     str2double(self.node));
+                de = de1 + de2;
+                % manage tasks
+                self.policy.tasks.run(self, "explore", time, simplify);
+                self.policy.tasks.run(self, "search", time, simplify);
+            elseif action == "charge"
+                self.visible_sensor.measurements = table();
+                self.remote_sensor.measurements = table();
+                self.energy = 100;
             elseif action == "none"
                 self.remote_sensor.measurements = table();
                 self.visible_sensor.measurements = table();
             end
-
-            % manage tasks
-            self.policy.tasks.run(self, action, time, simplify);
 
             e = self.energy - de;
             if e < 0  e = 0; end
