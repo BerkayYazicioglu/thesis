@@ -40,11 +40,13 @@ classdef TaskManager < handle
                 return
             end
             sensor = self.configs.(action).pi;
+            attempted_tasks = [""];
             % perform applicable tasks
             for i = 1:length(robot.(sensor).measurements.nodes)
                 task_node = num2str(robot.(sensor).measurements.nodes(i));
                 if self.items.isKey(task_node)
                     % there is a task at the node, try to perform
+                    attempted_tasks = [attempted_tasks; string(task_node)];
                     if self.items(task_node).type == action
                         outcome = self.items(task_node).perform_task(robot, simplify);
                         if outcome
@@ -63,6 +65,15 @@ classdef TaskManager < handle
                             end
                         end
                     end
+                end
+            end
+            % find any attempted tasks that were not measured
+            if ~isempty(robot.schedule)
+                planned_tasks = robot.schedule.tasks{1};
+                planned_tasks = planned_tasks(self.items.isKey(planned_tasks));
+                failed_tasks = setdiff(planned_tasks, attempted_tasks);
+                if ~isempty(failed_tasks)
+                    arrayfun(@(x) self.items(x).update_history(robot, 0), failed_tasks);
                 end
             end
         end

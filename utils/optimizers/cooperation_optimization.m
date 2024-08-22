@@ -1,19 +1,20 @@
 %% Search for best combined strategy from the most recent caches of given robots
 % assuming the caches are pruned and simplified
 
-function [planned_schedules, analysis] = cooperation_optimization(robots, max_iter)
+function [trajectories, analysis] = cooperation_optimization(robots, charger, max_iter)
+    gui = evalin('base', 'gui');   
     for i = 1:length(robots)
         % recalculate policy if the robots are in control period
-        offset = length(robots(i).policy.data.actions) - height(robots(i).schedule);
-        if offset
+        if isnan(robots(i).schedule.candidate_u(1))
+            gui.print("cooperation |" + robots(i).id + " policy recalculation");
             robots(i).schedule = timetable();
-            robots(i).policy.run(robots(i), robots(i).time);
+            robots(i).policy.run(robots(i), charger, robots(i).time);
         end
-
-        caches = [arrayfun(@(x) x.policy.data.cache, robots, 'UniformOutput', false)];
-        cache_indices = [arrayfun(@(x) x.policy.data.cache_idx, robots, 'UniformOutput', false)];
-        cache_u = [arrayfun(@(x) x.policy.data.analysis, robots, 'UniformOutput', false)];
     end
+
+    caches = [arrayfun(@(x) x.policy.data.cache, robots, 'UniformOutput', false)];
+    cache_indices = [arrayfun(@(x) x.policy.data.cache_idx, robots, 'UniformOutput', false)];
+    cache_u = [arrayfun(@(x) x.policy.data.analysis', robots, 'UniformOutput', false)];
 
     %% fitness function for multiple caches
     % 1 -> no action
@@ -76,11 +77,13 @@ function [planned_schedules, analysis] = cooperation_optimization(robots, max_it
 
     % get all candidate cache combinations and brute force search caches
     C_combinations = combinations(C_indices{:});
-    plots = {'surrogateoptplot'};
-    %plots = {};
+    plots = {};
+    if charger.world.params.detail_plots
+        plots = {'surrogateoptplot'};
+    end
     best_fval = 0;
-
-    planned_schedules = cell(1, length(robots));
+    best_C = [];
+    best_x = [];
 
     % analysis
     analysis = table({{}}, {{}}, 0,  ...
@@ -121,22 +124,72 @@ function [planned_schedules, analysis] = cooperation_optimization(robots, max_it
         % select best
         if fval <= best_fval
             best_fval = fval; 
-            for j = 1:length(robots)
-                a = caches{j}{C(j)}.Nodes.Name(cache_indices{j}{C(j)}(x(j)));
-                t_idx = caches{j}{C(j)}.findnode(caches{j}{C(j)}.shortestpath('0', a));
-                Times = seconds(caches{j}{C(j)}.Nodes.t(t_idx(2:end)));
-                tasks = caches{j}{C(j)}.Nodes.tau(t_idx(2:end));
-                a = str2num(char(num2cell(char(a))));
-                actions = robots(j).policy.configs.action_list(a(2:end));
-
-                planned_schedules{j} = ...
-                    timetable(seconds(Times) + robots(j).time, ...
-                              [cellfun(@(x) str2num(x), robots(j).policy.data.paths{C(j)})]', ...
-                              convertCharsToStrings([actions{:}])', ...
-                              arrayfun(@(x) {x}, tasks), ...
-                              'VariableNames', {'node', 'action', 'tasks'});
-            end
+            best_C = C;
+            best_x = x;
         end
     end
+
+    % process the best results
+    trajectories = cell(1, length(robots));
+    for j = 1:length(robots)
+        a = caches{j}{best_C(j)}.Nodes.Name(cache_indices{j}{best_C(j)}(best_x(j)));
+        t_idx = caches{j}{best_C(j)}.findnode(caches{j}{best_C(j)}.shortestpath('0', a));
+        Times = caches{j}{best_C(j)}.Nodes.t(t_idx);
+        tasks = caches{j}{best_C(j)}.Nodes.tau(t_idx);
+        a = str2num(char(num2cell(char(a))));
+        actions = robots(j).policy.configs.action_list(a(2:end));
+        
+        if isempty(actions)
+            % nowhere to go
+            actions = {"charge"};
+        elseif caches{j}{best_C(j)}.Nodes.flag(cache_indices{j}{best_C(j)}(best_x(j))) == 2
+            actions = [actions {"charge"}];
+        end
+        actions = [actions{:}];
+        path = robots(j).policy.data.paths{best_C(j)};
+
+        if actions(end) == "charge"
+            actions(end) = [];
+            [~, idx] = min(abs(charger.schedule.Time - Times(end) - robots(j).time));
+            charger_node = num2str(charger.schedule.node(idx));
+            % find the shortest path to the charger node
+            if ~isempty(actions)
+                path = path(1:length(actions));
+                [p, ~, edge] = robots(j).map.shortestpath(path(end), charger_node);
+            else
+                path = {};
+                [p, ~, edge] = robots(j).map.shortestpath(robot.node, charger_node);
+            end
+            last_t = Times(end);
+            for i = 2:length(p)
+                distance = robots(j).world.environment.Edges(edge(i-1),:).Weight;
+                Times = [Times(:); last_t + seconds(distance/robots(j).speed)];
+                actions = [actions(:); "none"];
+                path = [path(:); p{i}];
+                last_t = Times(end);
+                tasks = [tasks(:); {""}];
+            end
+            actions(end) = "charge";
+            Times(end) = Times(end) + robots(j).charge_s;
+        end
+        Times = Times(2:end);
+        tasks = tasks(2:end);
+        % separate planned tasks
+        d_tasks = cell(size(tasks));
+        for i = 2:length(d_tasks)
+            d_tasks{i} = setdiff(tasks{i}, tasks{i-1});
+            if isempty(d_tasks{i})
+                d_tasks{i} = "";
+            end
+        end
+        d_tasks{1} = tasks{1};
+
+        log = sprintf('%s |cooperation  |actions: %s', robots(j).id, strjoin(actions));
+        gui.print(log);
+
+        trajectories{j} = table(Times(:), path(:), actions(:), d_tasks, ...
+            'VariableNames', {'time', 'node', 'action', 'tasks'});
+    end
     toc
+    gui.print("");
 end

@@ -1,15 +1,18 @@
 %% Optimal task allocation along a given path with genetic optimization
 % assuming path{1} ~= robot.node
 
-function [actions, fval, analysis] = ga_task_allocator(robot, path)
+function [trajectory, fval, analysis] = ga_task_allocator(robot, charger, path)
     % caching with a digraph
     cache = digraph(0, ...
-                    table("0", 0, seconds(0), robot.energy, {""}, {[]}, false, 0, 0, ...
+                    table("0", 0, seconds(0), robot.energy, {""}, {[]}, 0, 0, 0, ...
                    'VariableNames', {'Name', 'u', 't', 'e', 'tau', 'u_tau', 'flag', 'children', 'depth'}));
     rf = rowfilter(["path_idx", "action"]);
     rf_mutation = rowfilter(["depth", "flag", "children"]);
     % preprocess the tasks that can be done along the way
-    [candidates, time_loss, energy_loss] = preprocess_path(robot, path);
+    [candidates, ...
+     time_loss, ... 
+     energy_loss, ...
+     analysis.minima_flag] = preprocess_path(robot, path);
 
     %% Fitness function
     % 1 -> no action
@@ -92,10 +95,22 @@ function [actions, fval, analysis] = ga_task_allocator(robot, path)
                         end
                     end
                     % check if there was any improvement
-                    flag = flag | u == u_prev;
+                    if u == u_prev
+                        flag = 1;
+                    end
                 end
                 % aggregrate the utility of closer points on the path
                 % u = u + u_prev;
+
+                % check charging constraints
+                const_flag = charge_constraints(charger, robot, path(j), e, t + robot.time);
+                if ~const_flag 
+                    % next state violates the constraint, flag current
+                    % state
+                    cache.Nodes.flag(idx) = 2;
+                    flag = 1;
+                end
+
                 % cache the next state
                 cache = cache.addnode(table(next_state, u, t, e, {tau}, {u_tau}, flag, 0, j, ...
                      'VariableNames', {'Name', 'u', 't', 'e', 'tau', 'u_tau', 'flag', 'children', 'depth'}));
@@ -103,7 +118,7 @@ function [actions, fval, analysis] = ga_task_allocator(robot, path)
                 cache.Nodes.children(idx) = cache.Nodes.children(idx) + 1;
                 state = next_state;
                 % if flagged, no need to continue
-                if flag && j < length(x)
+                if flag == 1 && j < length(x)
                     final_state = "0" + erase(num2str(x), ' ');
                     cache = cache.addnode(table(final_state, 0, t, e, {""}, {[]}, flag, 0, numel(x), ...
                         'VariableNames', {'Name', 'u', 't', 'e', 'tau', 'u_tau', 'flag', 'children', 'depth'}));
@@ -179,11 +194,13 @@ function [actions, fval, analysis] = ga_task_allocator(robot, path)
     elite_ratio = 0.1;
     max_stall = 10;
 
-    % plots = {'gaplotscores', ...
-    %          'gaplotdistance', ...
-    %          'gaplotbestf', ...
-    %          'gaplotselection'};
     plots = {};
+    if robot.world.params.detail_plots
+        plots = {'gaplotscores', ...
+                 'gaplotdistance', ...
+                 'gaplotbestf', ...
+                 'gaplotselection'};
+    end
 
     options = optimoptions('ga', ...
                            'PopulationSize', popsize, ...
@@ -201,28 +218,96 @@ function [actions, fval, analysis] = ga_task_allocator(robot, path)
                    length(path), ... % numvars
                    [],[],[],[], ...  % A, b, Aeq, Beq 
                    ones(size(path)), ... % lb
-                   3*ones(size(path)), ... % up
+                   length(robot.policy.configs.action_list)*ones(size(path)), ... % up
                    [], ... % nonlcon
                    1:length(path), ... % intcon
                    options);
-    actions = robot.policy.configs.action_list(x);
-    fval = -fval;
 
-    cache = rmnode(cache, cache.Nodes.Name(cache.Nodes.flag));
-    idx = find(cellfun(@(y) strlength(y)==length(path)+1, cache.Nodes.Name));
-    
+    % get final utilities
+    cache.Nodes.flag(1) = 0;
+    cache = rmnode(cache, cache.Nodes.Name(cache.Nodes.flag == 1));
+    max_length = max([arrayfun(@(x) strlength(x), cache.Nodes.Name)]);
+    end_flags = [arrayfun(@(y) strlength(y) == max_length, cache.Nodes.Name)];
+    const_flags = [arrayfun(@(y) y == 2, cache.Nodes.flag)];
+    idx = find(end_flags | const_flags);
+
     % analysis data
+    analysis.n_func = output.funccount;
+    analysis.candidates = candidates;
     analysis.cache = cache;
     analysis.cache_idx = idx;
-    analysis.utility = -cache.Nodes(rf_mutation.depth == length(path), :).u';
+    analysis.utility = -cache.Nodes.u(idx)';
+    analysis.log = "";
+
+    [fval, best_idx] = max(analysis.utility);
+     % passivity
+    if sum(fval == analysis.utility) > 1 
+        [~, best_idx] = min(cache.Nodes.t(idx(analysis.utility == fval)));
+    end
+    best_idx = idx(best_idx);
+
+    x = cache.Nodes.Name(best_idx);
+    t_idx = cache.findnode(cache.shortestpath('0', x));
+    times = cache.Nodes.t(t_idx); % including origin
+    tasks = cache.Nodes.tau(t_idx); % including origin
+    x = str2num(char(num2cell(char(x))));
+    actions = robot.policy.configs.action_list(x(2:end)); % excluding origin
+
+    if isempty(actions)
+        % nowhere to go
+        actions = {"charge"};
+    elseif cache.Nodes.flag(best_idx) == 2
+        actions = [actions {"charge"}];
+    end
+    actions = [actions{:}];
+    
+    if actions(end) == "charge"
+        actions(end) = [];
+        [~, idx] = min(abs(charger.schedule.Time - times(end) - robot.time));
+        charger_node = num2str(charger.schedule.node(idx));
+        % find the shortest path to the charger node
+        if ~isempty(actions)
+            path = path(1:length(actions));
+            [p, ~, edge] = robot.map.shortestpath(path(end), charger_node);
+        else
+            path = {};
+            [p, ~, edge] = robot.map.shortestpath(robot.node, charger_node);
+        end
+        last_t = times(end);
+        for i = 2:length(p)
+            distance = robot.world.environment.Edges(edge(i-1),:).Weight;
+            times = [times(:); last_t + seconds(distance/robot.speed)];
+            actions = [actions(:); "none"];
+            path = [path(:); p{i}];
+            last_t = times(end);
+            tasks = [tasks(:); {""}];
+        end
+        actions(end) = "charge";
+        times(end) = times(end) + robot.charge_s;
+    end
+    times = times(2:end);
+    tasks = tasks(2:end);
+    % separate planned tasks
+    d_tasks = cell(size(tasks));
+    for i = 2:length(d_tasks)
+        d_tasks{i} = setdiff(tasks{i}, tasks{i-1});
+        if isempty(d_tasks{i})
+            d_tasks{i} = "";
+        end
+    end
+    d_tasks{1} = tasks{1};
+
+    trajectory = table(times(:), path(:), actions(:), d_tasks, ...
+        'VariableNames', {'time', 'node', 'action', 'tasks'});
     
     % calculate cache fullness
-    cache_length = sum(cellfun(@(y) numel(y)==length(x)+1, cache.Nodes.Name));
-    ratio = cache_length / length(robot.policy.configs.action_list)^length(x);
-    analysis.log = sprintf('%s |fval: %.3f |size: %d |ratio: %.3f', ...
+    cache_length = numel(analysis.cache_idx);
+    analysis.ratio = cache_length / length(robot.policy.configs.action_list)^length(path);
+    analysis.log = sprintf('%s |fval: %.3f |size: %d |ratio: %.3f |optimizer: %s', ...
         robot.id, ...
         fval, ...
         cache_length, ...
-        ratio);
+        analysis.ratio, ...
+        "ga");
 end
 

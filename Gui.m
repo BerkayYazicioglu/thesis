@@ -5,6 +5,7 @@ classdef Gui < handle
     properties
         gui simulation
         mission Mission
+        restart_flag = false 
 
         params
         sim_handles
@@ -187,6 +188,70 @@ classdef Gui < handle
             % utility distribution of the most recent optimization
             self.data_handles.utility.data = plot(self.data_plot, 0, 0);
             self.data_handles.utility.data.Visible = 'off';
+
+            % energy 
+            self.data_handles.energy.data = [];
+            for i = 1:length(self.mission.robots)
+                robot_id = self.mission.robots{i}.id;
+                rf = rowfilter("robot");
+                self.data_handles.energy.data = [self.data_handles.energy.data 
+                    plot(self.data_plot, ...
+                        hours(mission.schedule(rf.robot == robot_id, :).Time), ...
+                        mission.schedule(rf.robot == robot_id, :).energy)];
+                self.data_handles.energy.data(i).Visible = 'off';
+            end
+
+            % candidate utilities
+            self.data_handles.candidate_utility.data = [];
+            for i = 1:length(self.mission.robots)
+                robot_id = self.mission.robots{i}.id;
+                rf = rowfilter("robot");
+                x = [0; hours(mission.schedule(rf.robot == robot_id, :).Time)];
+                y = [0; mission.schedule(rf.robot == robot_id, :).candidate_u];
+                self.data_handles.candidate_utility.data = [self.data_handles.candidate_utility.data 
+                    plot(self.data_plot, x(isfinite(y)), y(isfinite(y)))];
+                self.data_handles.candidate_utility.data(i).Visible = 'off';
+            end
+
+            % map_area 
+            self.data_handles.map_area.data = plot(self.data_plot, 0, 0);
+            self.data_handles.map_area.data.Visible = 'off';
+
+            % number of function calls during optimization
+            self.data_handles.n_func.data = [];
+            for i = 1:length(self.mission.robots)
+                robot_id = self.mission.robots{i}.id;
+                rf = rowfilter("robot");
+                x = [0; hours(mission.schedule(rf.robot == robot_id, :).Time)];
+                y = [0; mission.schedule(rf.robot == robot_id, :).n_func];
+                self.data_handles.n_func.data = [self.data_handles.n_func.data 
+                    plot(self.data_plot, x(isfinite(y)), y(isfinite(y)))];
+                self.data_handles.n_func.data(i).Visible = 'off';
+            end
+
+            % cache ratios
+            self.data_handles.cache_ratio.data = [];
+            for i = 1:length(self.mission.robots)
+                robot_id = self.mission.robots{i}.id;
+                rf = rowfilter("robot");
+                x = [0; hours(mission.schedule(rf.robot == robot_id, :).Time)];
+                y = [0; mission.schedule(rf.robot == robot_id, :).ratio];
+                self.data_handles.cache_ratio.data = [self.data_handles.cache_ratio.data 
+                    plot(self.data_plot, x(isfinite(y)), y(isfinite(y)))];
+                self.data_handles.cache_ratio.data(i).Visible = 'off';
+            end
+
+            % optimization best fval
+            self.data_handles.fval.data = [];
+            for i = 1:length(self.mission.robots)
+                robot_id = self.mission.robots{i}.id;
+                rf = rowfilter("robot");
+                x = [0; hours(mission.schedule(rf.robot == robot_id, :).Time)];
+                y = [0; mission.schedule(rf.robot == robot_id, :).fval];
+                self.data_handles.fval.data = [self.data_handles.fval.data 
+                    plot(self.data_plot, x(isfinite(y)), y(isfinite(y)))];
+                self.data_handles.fval.data(i).Visible = 'off';
+            end
         end
 
         %% Logger
@@ -225,7 +290,7 @@ classdef Gui < handle
             self.mission.settings.coordination.radius = self.gui.radius.Value;
             self.mission.settings.charger.policy.type = self.gui.charger_select.Value;
             self.mission.settings.charger.policy.control_horizon = self.gui.charger_control_horizon.Value;
-            self.mission.settings.t_end = self.gui.t_end.Value;
+            self.mission.settings.t_end = duration(self.gui.t_end.Value);
         end
 
         %% robot selection callback
@@ -275,15 +340,11 @@ classdef Gui < handle
 
         %% restart callback
         function restart_cb(self, app, event)
-            new_world =  World(self.mission.world);
-            assignin('base', 'world', new_world);
-            new_mission = Mission(self.mission.settings, new_world);
-            assignin('base', 'mission', new_mission);
-        
-            cla(self.gui.world,'reset')
-            cla(self.data_plot,'reset')
-            hold(self.gui.world, 'on')
-            hold(self.data_plot, 'on')
+            self.restart_flag = true;
+            id = strsplit(self.mission.robots{1}.id, '_');
+            type = id{1};
+            idx = str2double(id{2});
+            self.mission.settings.charger.p_init = self.mission.settings.robots.(type).p_init{idx};
         end
         
         %% Refresh policy
@@ -325,7 +386,7 @@ classdef Gui < handle
                          'LineWidth', 0.7);
             end
             
-            self.gui.progress_bar.Limits = [1 length(paths)];
+            self.gui.progress_bar.Limits = [1 max(2, length(paths))];
             self.gui.progress_bar.MajorTicks = 1:length(paths);
             self.gui.progress_bar.MinorTicks = [];
             self.gui.progress_bar.Value = status; 
@@ -362,11 +423,17 @@ classdef Gui < handle
                 'YData', self.mission.world.Y(str2double(self.mission.charger.node)) ...
                 );
             t = self.mission.schedule.Time(end);
-            stdout = string(t, "hh:mm:ss") + " |";
+            
+            stdout = "Time: " + string(t, "hh:mm:ss");
             for i = 1:length(self.mission.robots)
                 robot = self.mission.robots{i};
-                stdout = stdout + " " + robot.id + " :" + ...
-                                        num2str(robot.energy, '%.f') + "% |";
+                rf = rowfilter(["node", "robot"]);
+                last_action = self.mission.schedule(rf.robot == robot.id & rf.node == str2num(robot.node), :);
+                stdout = [stdout; " " + robot.id + "| " + ...
+                                  num2str(robot.energy, '%.f') + "% | pos: " + ...
+                                  num2str([robot.world.X(str2num(robot.node)) ...
+                                           robot.world.Y(str2num(robot.node))], "%.1f ") + ...
+                                  " | action: " + last_action.action(end)];
                 set(self.sim_handles.(robot.id).pos, ...
                     'XData', self.mission.world.X(str2double(robot.node)), ...
                     'YData', self.mission.world.Y(str2double(robot.node)) ...
@@ -378,8 +445,10 @@ classdef Gui < handle
                     accessible = 0 * bin;
                     for j = 1:length(self.mission.robots)
                         robot_node = robot.map.findnode(self.mission.robots{j}.node);
-                        robot_bin = bin(robot_node);
-                        accessible = accessible | (bin == robot_bin);
+                        if robot_node
+                            robot_bin = bin(robot_node);
+                            accessible = accessible | (bin == robot_bin);
+                        end
                     end
                     blocked = cellfun(@str2num, robot.map.Nodes.Name(~accessible));
                     c(blocked) = 0.7;
@@ -404,7 +473,7 @@ classdef Gui < handle
                         'YData', robot.remote_sensor.measurements.coordinates(:, 2));
                 end
             end
-            set(self.gui.system, 'Value', stdout);
+            self.gui.system.Value = stdout;
 
             % tasks
             tasks = [self.mission.tasks.items.values];
@@ -442,6 +511,44 @@ classdef Gui < handle
                 set(self.data_handles.victim.data, ...
                     'XData', seconds(self.mission.schedule.Time), ...
                     'YData', [cellfun(@(x) length(x), self.mission.schedule.Ndet)]); 
+
+                % map area plot
+                set(self.data_handles.map_area.data, ...
+                    'XData', seconds(self.mission.schedule.Time), ...
+                    'YData', self.mission.schedule.map_area); 
+             
+                for i = 1:length(self.mission.robots)
+                    robot_id = self.mission.robots{i}.id;
+                    % energy plot
+                    rf = rowfilter("robot");
+                    set(self.data_handles.energy.data(i), ...
+                        'XData', hours(self.mission.schedule(rf.robot == robot_id, :).Time), ...
+                        'YData', self.mission.schedule(rf.robot == robot_id, :).energy);
+                    % candidate utility plot
+                    x = [0; hours(self.mission.schedule(rf.robot == robot_id, :).Time)];
+                    y = [0; self.mission.schedule(rf.robot == robot_id, :).candidate_u];
+                    set(self.data_handles.candidate_utility.data(i), ...
+                        'XData', x(isfinite(y)), ...
+                        'YData', y(isfinite(y)));
+                    % number of function calls during optimization
+                    x = [0; hours(self.mission.schedule(rf.robot == robot_id, :).Time)];
+                    y = [0; self.mission.schedule(rf.robot == robot_id, :).n_func];
+                    set(self.data_handles.n_func.data(i), ...
+                        'XData', x(isfinite(y)), ...
+                        'YData', y(isfinite(y)));
+                    % cache ratios
+                    x = [0; hours(self.mission.schedule(rf.robot == robot_id, :).Time)];
+                    y = [0; self.mission.schedule(rf.robot == robot_id, :).ratio];
+                    set(self.data_handles.cache_ratio.data(i), ...
+                        'XData', x(isfinite(y)), ...
+                        'YData', y(isfinite(y)));
+                    % optimization best fval
+                    x = [0; hours(self.mission.schedule(rf.robot == robot_id, :).Time)];
+                    y = [0; self.mission.schedule(rf.robot == robot_id, :).fval];
+                    set(self.data_handles.fval.data(i), ...
+                        'XData', x(isfinite(y)), ...
+                        'YData', y(isfinite(y)));
+                end
             end
             axis(self.data_plot, 'tight');
             drawnow

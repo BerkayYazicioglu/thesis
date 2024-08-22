@@ -82,7 +82,7 @@ classdef Robot < handle
         end
 
         %% Make a decision to take an action
-        function map = run(self, map)
+        function map = run(self, map, charger)
             self.move(num2str(self.schedule.node(1)));
             % perform action
             self.time = self.schedule.Time(1);
@@ -90,6 +90,11 @@ classdef Robot < handle
             % update maps
             if self.schedule.action{1} == "explore"
                 map = self.update_maps(map);
+            end
+            if self.schedule.action{1} == "charge"
+                if charger.node ~= self.node
+                    error("Charger is not at the current location");
+                end
             end
             self.schedule(1,:) = [];
         end
@@ -157,9 +162,7 @@ classdef Robot < handle
                 self.visible_sensor.measurements = table();
             end
 
-            e = self.energy - de;
-            if e < 0  e = 0; end
-            self.energy = e;
+            self.energy = self.energy - de;
         end
 
         %% Update the global and local maps with the current measurements
@@ -233,9 +236,7 @@ classdef Robot < handle
                 error('Heading error');
             end
 
-            e = self.energy - distance * self.energy_per_m;
-            if e < 0  e = 0; end
-            self.energy = e;
+            self.energy = self.energy - distance * self.energy_per_m;
             self.node = target;
         end
     end

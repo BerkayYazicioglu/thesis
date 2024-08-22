@@ -1,24 +1,27 @@
 world:
     data_file: world_generator/data/dummy.json
     distance_mode: 3d
+    detail_plots: false 
+    capture_video: false
+    save_file_name: simulation
     victims:
-        count: 50
+        count: 100
         destruct_thresh: 0.3
         t_avg: 02:00:00
 
 mission:
-    t_end: 05:00:00
+    t_end: 07:00:00
     map_features: [terrain]
     coordination:
         type: task
         radius: 10
-        task: 0.5
+        task: 0.3
     gui:
         policy_types: [random, brute_force, ga]
         frontier_types: [all_frontier, 4_frontier, 8_frontier]
-        analysis_types: [heatmap, victim, utility]
+        analysis_types: [heatmap, victim, utility, energy, candidate_utility, map_area, n_func, cache_ratio, fval]
         coordination_types: [task, radius]
-        charger_types: [static, dynamic]
+        charger_types: [static, dynamic, dogwalk]
     tasks:
         explore:
             pi: visible_sensor
@@ -35,15 +38,15 @@ mission:
         max_step: 0.5
         heading: 1
         height: 1
-        speed: 0.5
+        speed: 1
         color: black
         policy: 
-            type: dynamic
+            type: dogwalk
             control_horizon: 1
     robots:
         ugv:
             id: ugv
-            count: 1
+            count: 2
             p_init: [[0,0], [0,0]]
             heading: 2
             max_step: 1

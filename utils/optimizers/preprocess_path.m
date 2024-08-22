@@ -1,7 +1,7 @@
 %% Preprocess candidate tasks for each action along the path
 % assuming path{1} ~= robot.node
 
-function [candidates, time_loss, energy_loss] = preprocess_path(robot, path)
+function [candidates, time_loss, energy_loss, flag] = preprocess_path(robot, path)
 
     candidates = table(1, "none", "0", 0, ...
         'VariableNames', {'path_idx', 'action', 'task_node', 'u'});
@@ -48,4 +48,7 @@ function [candidates, time_loss, energy_loss] = preprocess_path(robot, path)
         energy_loss(i) = distance * robot.energy_per_m;
         node = path{i};
     end
+
+    % check if there are any tasks in the candidates
+    flag = row == 1;
 end

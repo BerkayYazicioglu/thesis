@@ -32,20 +32,13 @@ classdef Policy < handle
             self.data.paths = {};
             self.data.frontier = {};
             self.data.analysis = {};
-            self.data.actions = "";
             self.data.cache = {};
             
             self.horizon = [];
             for i = -self.configs.prediction_horizon:self.configs.prediction_horizon
                 col = [];
                 for j = -self.configs.prediction_horizon:self.configs.prediction_horizon
-                    cond_d = (i/self.configs.prediction_horizon)^2 ...
-                           + (j/self.configs.prediction_horizon)^2 <= 1;
-                    if cond_d 
-                        % calculate distance in meters to the origin
-                        dist = vecnorm([j i] .* world.cell_size);
-                        col = [col; j i];
-                    end
+                    col = [col; j i];
                 end
                 self.horizon = [self.horizon; col];
             end
@@ -83,11 +76,8 @@ classdef Policy < handle
             % find frontier points
             self.data.frontier = find_candidate_points(robot, self.configs.candidate_selection);
             self.data.frontier = unique(self.data.frontier);
-            self.data.analysis = {};
-            self.data.paths = cell(1, length(self.data.frontier));
-            self.data.cache = cell(1, length(self.data.frontier));
-            self.data.cache_idx = cell(1, length(self.data.frontier));
-
+            self.data.paths = {};
+            
             % create paths to frontiers
             for i = 1:length(self.data.frontier)
                 if self.configs.path_selection == "shortest"
@@ -99,40 +89,82 @@ classdef Policy < handle
                 path = path(1:min(self.configs.prediction_horizon, length(path)));
                 self.data.paths{i} = path;
             end
+            self.data.paths(cellfun(@isempty, self.data.paths)) = [];
 
             n_paths = length(self.data.paths);
             gui.refresh_policy(robot, self.data.paths, 1);
             optimizer_fcn = self.configs.type + "_task_allocator";
            
             % allocate optimal tasks to the paths
+            self.data.analysis = cell(1, n_paths);
+            self.data.cache = cell(1, n_paths);
+            self.data.cache_idx = cell(1, n_paths);
+            self.data.n_func = cell(1, n_paths);
+            self.data.ratio = cell(1, n_paths);
+
             trajectories = cell(1, n_paths);
             utilities = zeros(1, n_paths);
+            local_minima_flag = true;
+            candidate_u = [];
 
             tic
             for i = 1:n_paths
-                if ~isempty(self.data.paths{i})
-                    gui.refresh_policy(robot, self.data.paths, i);
+                gui.refresh_policy(robot, self.data.paths, i);
 
-                    [trajectories{i}, utilities(i), analysis] = ...
-                        feval(optimizer_fcn, robot, charger, self.data.paths{i});
+                [trajectories{i}, utilities(i), analysis] = ...
+                    feval(optimizer_fcn, robot, charger, self.data.paths{i});
 
-                    self.data.analysis = [self.data.analysis analysis.utility];
-                    self.data.cache{i} = analysis.cache;
-                    self.data.cache_idx{i} = analysis.cache_idx;
+                candidate_u = [candidate_u; analysis.candidates.u];
+                self.data.analysis{i} = analysis.utility;
+                self.data.cache{i} = analysis.cache;
+                self.data.cache_idx{i} = analysis.cache_idx;
+                self.data.n_func{i} = analysis.n_func;
+                self.data.ratio{i} = analysis.ratio;
 
-                    gui.print(analysis.log);
-                end
+                local_minima_flag = local_minima_flag & analysis.minima_flag;
+
+                gui.print(analysis.log);
+            end
+            
+            % resolve local minima
+            if local_minima_flag
+                path = local_minima_heuristic(robot);
+                self.data.paths = {path};
+                [trajectory, utility, analysis] = ...
+                        feval(optimizer_fcn, robot, charger, path);
+                self.data.analysis = {utility};
+                self.data.cache = {analysis.cache};
+                self.data.cache_idx = {analysis.cache_idx};
+                self.data.n_func = {analysis.n_func};
+                self.data.ratio = {analysis.ratio};
+                utilities = utility;
+                idx = 1;
+                gui.print("local minima heuristic| " + analysis.log);
+            else
+                [~, idx] = max(utilities,[],"all");
+                trajectory = trajectories{idx};
             end
             toc
+            
+            candidate_u_ext = nan(size(trajectory.tasks));
+            n_func_ext = nan(size(trajectory.tasks));
+            ratio_ext = nan(size(trajectory.tasks));
+            fval_ext = nan(size(trajectory.tasks));
+            candidate_u_ext(1) = mean(candidate_u);
+            n_func_ext(1) = self.data.n_func{idx};
+            ratio_ext(1) = self.data.ratio{idx};
+            fval_ext(1) = utilities(idx);
 
-            [~, idx] = max(utilities,[],"all");
-            trajectory = trajectories{idx};
             planned_schedule = timetable(trajectory.time, ...
                                          [cellfun(@(x) str2double(x), trajectory.node)], ...
                                          trajectory.action, ...
                                          trajectory.tasks, ...
                                          [arrayfun(@(x) self.configs.type, 1:height(trajectory),'UniformOutput', false)]', ...
-                'VariableNames', {'node', 'action', 'tasks', 'optimizer'});
+                                         candidate_u_ext(:), ...
+                                         fval_ext(:), ...
+                                         n_func_ext(:), ...
+                                         ratio_ext(:), ...
+                'VariableNames', {'node', 'action', 'tasks', 'optimizer', 'candidate_u', 'fval', 'n_func', 'ratio'});
             log = sprintf('%s | actions: %s\n', robot.id, strjoin(trajectory.action));
             gui.print(log);
             self.schedule = planned_schedule;
@@ -158,6 +190,18 @@ classdef Policy < handle
             task_y = task_y - node_y;
             c = 0;
 
+            % check if the capability estimation was updated by a
+            % measurement
+            if ~isempty(task.history)
+                id = strsplit(robot.id, "_");
+                rf = rowfilter(["robot", "node"]);
+                tt = task.history(rf.robot == id(1) & ...
+                                  rf.node == string(node), :);
+                if ~isempty(tt)
+                    c = tt.capability;
+                    return
+                end
+            end
             if action ~= task.type 
                 return
             end
