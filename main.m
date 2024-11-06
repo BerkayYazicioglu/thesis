@@ -1,6 +1,6 @@
 %%
 clc
-clearvars -except sim_obj
+clearvars -except sim_obj 
 close
 addpath('utils')
 addpath('utils/optimizers')
@@ -16,15 +16,34 @@ elseif ~isvalid(sim_obj)
 end
 
 %% Generate the mission
+save_file_name = settings.world.save_file_name;
+save_dir = "results/" + save_file_name;
+mkdir(save_dir);
 
 world = World(settings.world);
 mission = Mission(settings.mission, world);
-gui = Gui(settings.mission.gui, sim_obj, mission);
+plots = axes();
+gui = Gui(settings.mission.gui, sim_obj, mission, plots);
 gui.run();
 
-while mission.t <= mission.t_end 
+if settings.world.capture_video
+    v = VideoWriter(save_dir + "/video");
+    open(v);
+end
+while mission.schedule.Time(end) <= mission.t_end 
 %    try 
+        if gui.restart_flag
+            mission = Mission(mission.settings, world);
+            gui = Gui(settings.mission.gui, sim_obj, mission, plots);
+            gui.run();
+        end
         waitfor(sim_obj.start, 'Value', 'On'); 
+
+        if settings.world.capture_video
+            im = frame2im(getframe(gui.gui.UIFigure));
+            writeVideo(v,im);
+        end
+      
         mission.run();
         gui.run();
 %    catch 
@@ -32,40 +51,17 @@ while mission.t <= mission.t_end
 %    end
 end
 
-%% simulation
+%% save simulation run
+mission_log = gui.gui.logger.Value;
+save(save_dir + "/mission.mat", "mission");
+save(save_dir + "/log.mat", "mission_log");
 
-% WIP
-% v = VideoWriter('simulation');
-% open(v);
-% 
-% hold(gca, 'on');
-% world.plot(gca);
-% r1.plot(gca);
-% r2.plot(gca);
-% drawnow
-% 
-% for i = 1:50
-%     disp(i);
-% 
-%     r1.path_planner();
-%     for j = 2:4
-%         r1.move(r1.path(j));
-%         r1.plot(gca);
-%         drawnow
-%     end
-% 
-%     r2.path_planner();
-%     for j = 2:4
-%         r2.move(r2.path(j));
-%         r2.plot(gca);
-%         drawnow
-%     end
-% 
-%     im = frame2im(getframe(gcf));
-%     writeVideo(v,im);
-% end
-% 
-% close(v);
+if settings.world.capture_video
+    close(v);
+end
+
+
+
 
 
 

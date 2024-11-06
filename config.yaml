@@ -1,19 +1,27 @@
 world:
     data_file: world_generator/data/dummy.json
     distance_mode: 3d
+    detail_plots: false 
+    capture_video: false
+    save_file_name: simulation
     victims:
-        count: 50
+        count: 100
         destruct_thresh: 0.3
         t_avg: 02:00:00
 
 mission:
-    t_end: 05:00:00
+    t_end: 07:00:00
     map_features: [terrain]
-    coordination_radius: 20
+    coordination:
+        type: task
+        radius: 10
+        task: 0.3
     gui:
         policy_types: [random, brute_force, ga]
         frontier_types: [all_frontier, 4_frontier, 8_frontier]
-        analysis_types: [heatmap, victim, utility]
+        analysis_types: [heatmap, victim, utility, energy, candidate_utility, map_area, n_func, cache_ratio, fval]
+        coordination_types: [task, radius]
+        charger_types: [static, dynamic, dogwalk]
     tasks:
         explore:
             pi: visible_sensor
@@ -24,17 +32,29 @@ mission:
             pi: remote_sensor
             spawn: 0.5
             kill: 0.9
+    charger:
+        id: charger
+        p_init: [0,0]
+        max_step: 0.5
+        heading: 1
+        height: 1
+        speed: 1
+        color: black
+        policy: 
+            type: dogwalk
+            control_horizon: 1
     robots:
         ugv:
             id: ugv
-            count: 1
+            count: 2
             p_init: [[0,0], [0,0]]
             heading: 2
             max_step: 1
             height: 1
             speed: 3
             crit_energy: 0
-            energy_per_m: 0.01
+            energy_per_m: 0.1
+            charge_s: 03:00
             PI_model: PI_model.fis
             color: black
             policy:
@@ -48,7 +68,7 @@ mission:
             sensors:
                 remote_sensor:
                     t_s: 03:00
-                    d_energy: 0
+                    d_energy: 5
                     features: [victim]
                     remote_sensing: true
                     max_range: 10
@@ -56,7 +76,7 @@ mission:
                     color: magenta
                 visible_sensor:
                     t_s: 00:30
-                    d_energy: 0
+                    d_energy: 1
                     features: [terrain, destruction, population]
                     remote_sensing: false
                     max_range: 50
@@ -64,7 +84,7 @@ mission:
                     color: green
         uav:
             id: uav
-            count: 1
+            count: 0
             p_init: [[0, 0]]
             heading: 3
             max_step: 100
@@ -72,6 +92,7 @@ mission:
             speed: 5
             crit_energy: 0
             energy_per_m: 0.1
+            charge_s: 10:00
             remote_range: 20
             visible_range: 75
             PI_model: PI_model.fis
@@ -87,7 +108,7 @@ mission:
             sensors:
                 remote_sensor:
                     t_s: 03:00
-                    d_energy: 0
+                    d_energy: 10
                     features: [victim]
                     remote_sensing: true
                     max_range: 10
@@ -95,7 +116,7 @@ mission:
                     color: magenta
                 visible_sensor:
                     t_s: 00:30
-                    d_energy: 0
+                    d_energy: 1
                     features: [terrain, destruction, population]
                     remote_sensing: false
                     max_range: 50

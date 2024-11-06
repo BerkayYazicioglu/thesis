@@ -21,6 +21,8 @@ classdef Sensor < handle
         color string;
         remote_sensing logical; % True -> measures all Fov
                                 % False -> only measures visible points
+
+        params
     end
    
     methods
@@ -38,6 +40,7 @@ classdef Sensor < handle
             addpath('utils');
             
             self.world = world;
+            self.params = params;
       
             self.remote_sensing = params.remote_sensing;
             self.features = params.features;
