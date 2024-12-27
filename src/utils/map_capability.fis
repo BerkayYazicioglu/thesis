@@ -1,0 +1,54 @@
+[System]
+Name='map_capability'
+Type='sugeno'
+Version=2.0
+NumInputs=2
+NumOutputs=1
+NumRules=12
+AndMethod='prod'
+OrMethod='probor'
+ImpMethod='prod'
+AggMethod='sum'
+DefuzzMethod='wtaver'
+
+[Input1]
+Name='distance'
+Range=[0 1]
+NumMFs=3
+MF1='L':'zmf',[0.170750118694362 0.504080118694362]
+MF2='M':'gbellmf',[0.2083 2.5 0.5]
+MF3='H':'smf',[0.507789317507418 0.841089317507418]
+
+[Input2]
+Name='capability'
+Range=[0 1]
+NumMFs=4
+MF1='L':'trapmf',[0.0421303656597774 0.0421303656597774 0.186804451510334 0.495230524642289]
+MF2='M':'trapmf',[0.144077901430843 0.477377901430843 0.560777901430843 0.894077901430843]
+MF3='H':'linsmf',[0.498887240356083 0.832187240356083]
+MF4='N':'trimf',[-0.0103338632750398 0.00079491255961843 0.0930047694753577]
+
+[Output1]
+Name='output1'
+Range=[0 1]
+NumMFs=6
+MF1='VL':'constant',[0.2]
+MF2='L':'constant',[0.4]
+MF3='M':'constant',[0.6]
+MF4='H':'constant',[0.8]
+MF5='VH':'constant',[1]
+MF6='N':'constant',[0]
+
+[Rules]
+1 1, 3 (1) : 1
+2 1, 2 (1) : 1
+3 1, 1 (1) : 1
+1 2, 4 (1) : 1
+2 2, 3 (1) : 1
+3 2, 2 (1) : 1
+1 3, 5 (1) : 1
+2 3, 4 (1) : 1
+3 3, 3 (1) : 1
+1 4, 6 (1) : 1
+2 4, 6 (1) : 1
+3 4, 6 (1) : 1
