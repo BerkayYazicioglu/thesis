@@ -1,127 +1,89 @@
 world:
-    data_file: world_generator/data/dummy.json
-    distance_mode: 3d
+    data_file: ../world_generator/data/dummy.json
     detail_plots: false 
     capture_video: false
     save_file_name: simulation
     victims:
         count: 100
-        destruct_thresh: 0.3
-        t_avg: 02:00:00
-
+        t_max: '10:00:00'
+        t_min: '05:00:00'
+        t_var: '02:00:00'
+        pi_detected: t >= obj.t_detected
+        pi_rescued: t >= obj.rescued
+gui:
+    verbose: 2
+    save_gif: false
+    optimizer_types: [random, greedy, brute_force, ga]
+    preprocessing_types: [closest, shortest_path]
+    analysis_types: [heatmap, 
+                     victim,
+                     utility, 
+                     energy, 
+                     tasks, 
+                     area,
+                     distance]
+    charger_types: [static, dynamic]
 mission:
-    t_end: 07:00:00
-    map_features: [terrain]
-    coordination:
-        type: task
-        radius: 10
-        task: 0.3
-    gui:
-        policy_types: [random, brute_force, ga]
-        frontier_types: [all_frontier, 4_frontier, 8_frontier]
-        analysis_types: [heatmap, victim, utility, energy, candidate_utility, map_area, n_func, cache_ratio, fval]
-        coordination_types: [task, radius]
-        charger_types: [static, dynamic, dogwalk]
+    t_end: '07:00:00'
+    mcdm: MCDM_weights.mat
+    PI_model: PI_model.fis
+    prediction_errors: false
+    coordination_radius: 2
     tasks:
-        explore:
-            pi: visible_sensor
-            spawn: 0
-            kill:  0.7
-            weight: 0.1
+        map:
+            type: map
+            pi_init: ismember(node, frontier) && ~ismember(node, task_nodes)
+            pi_complete: ~ismember(node, frontier)
         search:
-            pi: remote_sensor
-            spawn: 0.5
-            kill: 0.9
+            type: search
+            pi_init: PI >= 0.5
+            pi_complete: ismember(node, robot.detector.measurements.nodes)
     charger:
         id: charger
-        p_init: [0,0]
+        q_init: [1,1]
         max_step: 0.5
-        heading: 1
-        height: 1
         speed: 1
-        color: black
+        color: white
         policy: 
-            type: dogwalk
+            optimizer: dynamic
             control_horizon: 1
+            task_proximity: 10
     robots:
         ugv:
-            id: ugv
             count: 2
-            p_init: [[0,0], [0,0]]
-            heading: 2
+            q_init: [[1,1], [1,1]]
             max_step: 1
             height: 1
             speed: 3
             crit_energy: 0
             energy_per_m: 0.1
-            charge_s: 03:00
-            PI_model: PI_model.fis
+            charge_s: '03:00'
             color: black
             policy:
-                type: brute_force
-                tradeoff: 2
-                action_list: [none, explore, search]
-                control_horizon: 5
-                prediction_horizon: 5
-                candidate_selection: 8_frontier
-                path_selection: shortest
-            sensors:
-                remote_sensor:
-                    t_s: 03:00
+                preprocessing: closest
+                num_tasks: 25
+                optimizer: greedy
+                control_horizon: 1
+                prediction_horizon: 10
+            capabilities:
+                detector:
+                    type: search
+                    capability: 1
+                    model: search_capability.mat
+                    t_s: '10:00'
                     d_energy: 5
                     features: [victim]
-                    remote_sensing: true
-                    max_range: 10
-                    angle: 360
-                    color: magenta
-                visible_sensor:
-                    t_s: 00:30
+                    max_range: 3
+                    arc: 360
+                    angles: [0]
+                mapper:
+                    type: map
+                    capability: 1
+                    model: map_capability.fis
+                    t_s: '01:00'
                     d_energy: 1
                     features: [terrain, destruction, population]
-                    remote_sensing: false
-                    max_range: 50
-                    angle: 90
-                    color: green
-        uav:
-            id: uav
-            count: 0
-            p_init: [[0, 0]]
-            heading: 3
-            max_step: 100
-            height: 50
-            speed: 5
-            crit_energy: 0
-            energy_per_m: 0.1
-            charge_s: 10:00
-            remote_range: 20
-            visible_range: 75
-            PI_model: PI_model.fis
-            color: white
-            policy:
-                type: brute_force
-                tradeoff: 2
-                action_list: [none, explore, search]
-                control_horizon: 5
-                prediction_horizon: 5
-                candidate_selection: 8_frontier
-                path_selection: shortest
-            sensors:
-                remote_sensor:
-                    t_s: 03:00
-                    d_energy: 10
-                    features: [victim]
-                    remote_sensing: true
-                    max_range: 10
-                    angle: 360
-                    color: magenta
-                visible_sensor:
-                    t_s: 00:30
-                    d_energy: 1
-                    features: [terrain, destruction, population]
-                    remote_sensing: false
-                    max_range: 50
-                    angle: 90
-                    color: green
-   
-
-
+                    max_range: 7
+                    arc: 90
+                    angles: [0, 45, 90, 135, 180, 225, 270, 315]
+  

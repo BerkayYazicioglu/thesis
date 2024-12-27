@@ -1,3 +1,4 @@
 *.avi
 *.asv
 .DS_Store
+/results/
