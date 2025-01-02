@@ -57,6 +57,9 @@ classdef Mission < handle
             for r = 1:length(obj.robots)
                 % take mapping measurements for all around
                 robot = obj.robots(r);
+                if ~ismember("mapper", robot.capabilities)
+                    continue
+                end
                 for a = 1:length(robot.mapper.angles)
                     robot.mapper.measure(a);
                     robot.update_maps();
@@ -68,11 +71,23 @@ classdef Mission < handle
 
             % plan individual paths for all robots
             for r = 1:length(obj.robots)
-                %outputs.pp = obj.robots(r).path_planner();
-                %obj.log_history(outputs);
-                obj.robots(r).path_planner();
+                results = obj.robots(r).path_planner();
+                if results.charge_flag
+                    % no tasks are viable
+                    obj.robots(r).schedule =  timetable(obj.charger.time, ...
+                        obj.robots(r).node, "none", 100, ...
+                        'VariableNames', {'node', 'action', 'energy'});
+                    obj.robots(r).state = "idle";
+                else
+                    obj.robots(r).generate_schedule([results.tasks.node], results.actions, seconds(0));
+                end
             end
             obj.charger.path_planner();
+            % check for conflicts
+            [conflicts, conflict_schedules] = detect_conflicts(obj);
+            if ~isempty(conflicts)
+                results = cooperation(obj, conflict_schedules, conflicts);
+            end
        
             % history
             obj.history.pp = timetable(duration.empty(0,1), ...
@@ -93,46 +108,43 @@ classdef Mission < handle
 
         %% Run a step of the mission
         function run(obj)
-            outputs.pp = [];
-            flags = [arrayfun(@(x) isempty(x.schedule), obj.robots)];
-            if any(flags)
-                outputs.pp = obj.robots(flags).path_planner();
-            end
-
-            % conflict resolution
-            [conflicts, conflict_schedules] = detect_conflicts(obj);
-            if ~isempty(conflicts)
-                coop_output = cooperation(obj, conflict_schedules, conflicts);
-            end
+            flags = false;
 
             % get the next time step from the robots
             [~, idx] = min(arrayfun(@(x) x.schedule.Time(1), obj.robots));
             
-            if obj.charger.schedule.Time(1) <= obj.robots(idx).schedule.Time(1)
+            charger_flag = obj.charger.schedule.Time(1) <= obj.robots(idx).schedule.Time(1);
+            if charger_flag
                 obj.charger.run();
+                obj.time = obj.charger.time;
+                flags = true;
             end
             % charger path planning
             if isempty(obj.charger.schedule)
                 obj.charger.path_planner();
             end
-            tt = obj.robots(idx).run();
-            obj.time = obj.robots(idx).time;
-            action = tt.action.split('_');
-            if action(1) ~= "none" && action(1) ~= "charge"
-                outputs.tasks = obj.manage_tasks(obj.robots(idx), tt);
-                flags = true;
+            if ~charger_flag || obj.time == obj.robots(idx).schedule.Time(1)
+                results = obj.robots(idx).run();
+                obj.time = obj.robots(idx).time;
+                if isfield(results, 'tasks')
+                    flags = true;
+                end
+                obj.log_history(results);
             end
+            
             obj.gui_update_flag = any(flags);
-            obj.log_history(outputs);
-
             % check if all robots are idle
-            obj.all_idle = all([obj.robots.idle]);
+            end_flags = arrayfun(@(x) x.schedule.action(end) == "none", obj.robots) & [obj.robots.state] == "idle";
+            obj.all_idle = all([end_flags obj.charger.idle]);
+            if all(obj.all_idle)
+                disp("asdf")
+            end
         end
 
         %% Log history
         function log_history(obj, outputs)
             % path planners
-            if ~isempty(outputs.pp)
+            if isfield(outputs, 'pp')
                 for i = 1:length(outputs.pp)
                     if ~outputs.pp.charge_flag
                         obj.history.pp(end+1, :) = {outputs.pp.robot.id, ...
@@ -182,7 +194,7 @@ classdef Mission < handle
             end
 
             % spawn search tasks
-            if ~isempty(robot.mapper.measurements)
+            if ismember("mapper", robot.capabilities) && ~isempty(robot.mapper.measurements)
                 new_measurements = robot.mapper.measurements(robot.mapper.measurements.is_new, :);
                 if ~isempty(new_measurements)
                     % compute PI of the newly mapped nodes

@@ -6,7 +6,7 @@ classdef Robot < handle
         id string;
         color string;
         q_init cell;
-        charge_s duration; 
+        charge_per_s double; 
         max_step double {mustBeReal, mustBeNonnegative}; % m 
         speed double {mustBeReal, mustBeNonnegative}; % m/s
         height double {mustBeNonnegative, mustBeReal}; % m
@@ -23,12 +23,13 @@ classdef Robot < handle
         energy double {mustBeNonnegative} = 100; % percentage energy
         capabilities (1,:) string {mustBeVector} = string.empty;
         control_step double = 0;
-        idle logical = false;
+        state string = "running"';
 
         world World;
         mission Mission;
 
         history timetable;
+        return_schedule timetable;
         cache table; 
     end
     
@@ -54,8 +55,7 @@ classdef Robot < handle
             
             obj.id = params.id;
             obj.color = params.color; 
-            obj.charge_s = duration(params.charge_s, 'InputFormat', 'mm:ss');
-            obj.charge_s.Format = 's';
+            obj.charge_per_s = params.charge_per_s;
             obj.max_step = params.max_step;
             obj.speed = params.speed;
             obj.height = params.height;
@@ -68,8 +68,12 @@ classdef Robot < handle
             obj.node = world.get_id(obj.q_init{1}, obj.q_init{2});
             obj.time = seconds(0);
             obj.time.Format = 'hh:mm:ss';
-            obj.schedule = timetable(duration.empty(0,1), string.empty, string.empty, ...
-                'VariableNames', {'node', 'action'});
+            obj.schedule = timetable(duration.empty(0,1), ...
+                string.empty, string.empty, [], ...
+                'VariableNames', {'node', 'action', 'energy'});
+            obj.return_schedule = timetable(duration.empty(0,1), ...
+                string.empty, string.empty, [], ...
+                'VariableNames', {'node', 'action', 'energy'});
             
             % capabilities
             obj.capabilities = [cellfun(@(x) string(x), fields(params.capabilities))];
@@ -83,7 +87,7 @@ classdef Robot < handle
             end
 
             % history
-            obj.history = timetable(obj.time, obj.node, "none", 0, 0, 0, 0 ,...
+            obj.history = timetable(obj.time, obj.node, "none", 0, 0, 0, 0,...
                 'VariableNames', {'node', ...
                                   'action', ...
                                   'distance', ...
@@ -93,52 +97,94 @@ classdef Robot < handle
         end
 
         %% Perform the next action on the schedule
-        function tt = run(obj)
+        function results = run(obj)
             % clear previous measurements if applicable
             for i = 1:length(obj.capabilities)
                 obj.(obj.capabilities(i)).measurements = table();
             end
-            % move to target
-            obj.move(obj.schedule.node(1));
-            % parse the action
-            action = obj.schedule.action(1).split('_');
-            if action(1) == "map"
-                obj.energy = obj.energy - obj.mapper.d_energy;
-                obj.time = obj.time + obj.mapper.t_s;
-                obj.mapper.measure(str2double(action(2)));
+            % preliminaries
+            obj.time = obj.schedule.Time(1);
+            obj.energy = obj.schedule.energy(1);
+            results.tt = obj.schedule(1,:);
+            obj.schedule(1,:) = [];
+
+            if obj.state == "idle"
                 obj.update_maps();
-                obj.control_step = obj.control_step + 1;
-            elseif action(1) == "search"
-                obj.energy = obj.energy - obj.mapper.d_energy;
-                obj.time = obj.time + obj.detector.t_s;
-                obj.detector.measure(str2double(action(2)));
-                % update detected victims
-                found_idx = find(obj.detector.measurements.victim);
-                victim_nodes = obj.detector.measurements.nodes(found_idx);
-                for i = 1:length(obj.world.victims)
-                    if ismember(obj.world.victims(i).node, victim_nodes)
-                        obj.world.victims(i).detect(obj);
+                obj.energy = 100;
+                results.pp = obj.path_planner();
+                if results.pp.charge_flag
+                    % no tasks are viable
+                    candidate_times = obj.mission.charger.schedule.Time(1) + seconds(1);
+                    filtered_actions = ["none" "charge" "charge_done"];
+                    for r = 1:length(obj.mission.robots)
+                        if obj.mission.robots(r).state == "running" && ...
+                           ~ismember(obj.mission.robots(r).schedule.action(end), filtered_actions)
+                            candidate_times(end+1) = obj.mission.robots(r).schedule.Time(end);
+                        end
+                    end
+                    obj.schedule = timetable(min(candidate_times), ...
+                        obj.node, "none", 100, ...
+                        'VariableNames', {'node', 'action', 'energy'});
+                else
+                    % a new plan can be made
+                    obj.generate_schedule([results.pp.tasks.node], results.pp.actions, obj.time);
+                    obj.state = "running";
+                end
+
+            elseif obj.state == "running"
+                % move to target
+                obj.move(results.tt.node(1));
+                % parse the action
+                action = results.tt.action(1).split('_');
+                if action(1) == "map"
+                    obj.mapper.measure(str2double(action(2)));
+                    obj.update_maps();
+                    obj.control_step = obj.control_step + 1;
+                    results.tasks = obj.mission.manage_tasks(obj, results.tt);
+                elseif action(1) == "search"
+                    obj.detector.measure(str2double(action(2)));
+                    % update detected victims
+                    found_idx = find(obj.detector.measurements.victim);
+                    victim_nodes = obj.detector.measurements.nodes(found_idx);
+                    for i = 1:length(obj.world.victims)
+                        if ismember(obj.world.victims(i).node, victim_nodes)
+                            obj.world.victims(i).detect(obj);
+                        end
+                    end
+                    obj.control_step = obj.control_step + 1;
+                    results.tasks = obj.mission.manage_tasks(obj, results.tt);
+                elseif action(1) == "charge"
+                    obj.mission.charger.charge(obj);
+                    obj.state = "idle";
+                end
+                
+                % check if a new plan needs to be made
+                if isempty(obj.schedule) 
+                    results.pp = obj.path_planner();
+                    % if charge_flag is raised, use the return path
+                    if results.pp.charge_flag
+                        obj.schedule = obj.return_schedule;
+                    else
+                        obj.generate_schedule([results.pp.tasks.node], results.pp.actions, obj.time);
+                        % check for conflicts
+                        [conflicts, conflict_schedules] = detect_conflicts(obj.mission);
+                        if ~isempty(conflicts)
+                            results.coop = cooperation(obj.mission, conflict_schedules, conflicts);
+                        end
                     end
                 end
-                obj.control_step = obj.control_step + 1;
-            elseif action(1) == "charge"
-                obj.mission.charger.charge(obj);
             end
-            % log history
-            obj.log_history();
-            % update schedule
-            tt = obj.schedule(1,:);
-            obj.schedule(1,:) = [];
+            obj.log_history(results.tt);
         end
 
         %% Log the lates robot state
-        function log_history(obj)
+        function log_history(obj, tt)
             h_node = obj.node;
-            h_action = obj.schedule.action(1);
+            h_action = tt.action(1);
             [~, d] = obj.world.environment.shortestpath(h_node, obj.history.node(end));
             h_distance = obj.history.distance(end) + d;
             h_mapped_area = obj.history.mapped_area(end);
-            if ~isempty(obj.mapper.measurements)
+            if ismember("mapper", obj.capabilities) && ~isempty(obj.mapper.measurements)
                 h_mapped_area = h_mapped_area + sum(obj.mapper.measurements.is_new);
             end
             new_victims = sum([obj.world.victims.t_detected] == obj.time);
@@ -164,41 +210,40 @@ classdef Robot < handle
             optimizer_fcn = obj.policy.optimizer + "_task_allocator";
             opt_results = feval(optimizer_fcn, obj, pp);
 
-            % generate the schedule
-            last_time = obj.generate_schedule([opt_results.tasks.node], opt_results.actions);
-            % if charge_flag is raised, construct the return path
-            if opt_results.charge_flag
-                return_schedule = generate_return_path(obj);
-                return_schedule.Time = return_schedule.Time + last_time;
-                obj.schedule = [obj.schedule; return_schedule];
-            end
+            % results
             obj.cache = opt_results.cache; 
             opt_results.robot = obj;
             obj.control_step = 0;
-            obj.idle = obj.energy == 100 && opt_results.charge_flag;
         end
 
 
         %% Generate schedule with given node - action pairs
-        function last_time = generate_schedule(obj, nodes, actions)
+        function generate_schedule(obj, nodes, actions, start_time)
             nodes = [obj.node; nodes(:)];
-            last_time = obj.time;
+            last_time = start_time;
+            last_energy = obj.energy;
             for i = 1:length(actions)
                 % construct the path
                 [path, ~, edges] = obj.map.shortestpath(nodes(i), nodes(i+1));
                 for p = 2:length(path)-1
-                    last_time = last_time + seconds(obj.map.Edges.Weight(edges(p-1))/obj.speed);
-                    obj.schedule(last_time, :) = {path(p), "none"};
+                    d = obj.map.Edges.Weight(edges(p-1));
+                    last_time = last_time + seconds(d / obj.speed);
+                    last_energy = last_energy - d * obj.energy_per_m;
+                    obj.schedule(last_time, :) = {path(p), "none", last_energy};
                 end
                 % task action
                 action = actions(i).split('_');
                 if action(1) == "map"
                     last_time = last_time + obj.mapper.t_s;
+                    last_energy = last_energy - obj.mapper.d_energy;
                 elseif action(1) == "search"
                     last_time = last_time + obj.detector.t_s;
+                    last_energy = last_energy - obj.detector.d_energy;
                 end
-                obj.schedule(last_time, :) = {nodes(i+1), actions(i)};
+                obj.schedule(last_time, :) = {nodes(i+1), actions(i), last_energy};
             end
+            % generate the return schedule from the last action
+            obj.return_schedule = generate_return_path(obj, nodes(end), last_time, last_energy);
         end
 
         %% Move the robot 
@@ -212,12 +257,9 @@ classdef Robot < handle
                 if c == 0 
                     error('The edge is too steep, check the path planner');
                 end
-                distance = obj.world.environment.Edges(edge,:).Weight;
             else
                 error('Given target is not a neighbor of the robot node');
             end
-            obj.energy = obj.energy - distance * obj.energy_per_m;
-            obj.time = obj.time + seconds(distance / obj.speed);
             obj.node = target;
         end
 
@@ -232,7 +274,7 @@ classdef Robot < handle
         %% Update the global and local maps with the current measurements
         % Assuming no measurement errors on 'terrain'
         function update_maps(obj)
-            if ~isempty(obj.mapper.measurements)
+            if ismember("mapper", obj.capabilities) && ~isempty(obj.mapper.measurements)
                 % add measurements to the global map
                 sub = subgraph(obj.world.environment, ...
                                obj.mapper.measurements.nodes); 

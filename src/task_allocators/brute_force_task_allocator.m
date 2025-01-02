@@ -9,7 +9,7 @@ function output = brute_force_task_allocator(robot, preprocessing)
 t0 = tic;
 
 % parameters
-max_iter = 500;
+max_iter = 100;
 prediction_horizon = min(robot.policy.prediction_horizon, length(preprocessing.tasks));
 
 % calculate all distance and travel time pairs
@@ -161,7 +161,7 @@ for i = 1:size(comb,1)
 end
 
 % get the best result
-if isempty(cache)
+if isempty(cache) || isempty(preprocessing.tasks)
     output.tasks = Task.empty;
     output.actions = string.empty;
     output.charge_flag = true;
@@ -174,6 +174,7 @@ else
     max_x = cache.tasks{max_row};
     num_control = min(length(max_x), robot.policy.control_horizon);
     actions = cache.actions{max_row};
+
     output.tasks = preprocessing.tasks(max_x(1:num_control));
     output.actions = actions(1:num_control);
     output.charge_flag = false;

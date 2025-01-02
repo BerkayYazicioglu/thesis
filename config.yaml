@@ -1,5 +1,5 @@
 world:
-    data_file: ../world_generator/data/dummy.json
+    data_file: world_generator/data/dummy.json
     detail_plots: false 
     capture_video: false
     save_file_name: simulation
@@ -24,11 +24,11 @@ gui:
                      distance]
     charger_types: [static, dynamic]
 mission:
-    t_end: '07:00:00'
+    t_end: '15:00:00'
     mcdm: MCDM_weights.mat
     PI_model: PI_model.fis
     prediction_errors: false
-    coordination_radius: 2
+    coordination_radius: 5
     tasks:
         map:
             type: map
@@ -42,48 +42,19 @@ mission:
         id: charger
         q_init: [1,1]
         max_step: 0.5
-        speed: 1
+        speed: 0.1
         color: white
         policy: 
             optimizer: dynamic
-            control_horizon: 1
-            task_proximity: 10
+            control_horizon: 10
+            task_proximity: 2
     robots:
         ugv:
-            count: 2
+            count: 1
             q_init: [[1,1], [1,1]]
-            max_step: 1
-            height: 1
-            speed: 3
-            crit_energy: 0
-            energy_per_m: 0.1
-            charge_s: '03:00'
-            color: black
-            policy:
-                preprocessing: closest
-                num_tasks: 25
-                optimizer: greedy
-                control_horizon: 1
-                prediction_horizon: 10
-            capabilities:
-                detector:
-                    type: search
-                    capability: 1
-                    model: search_capability.mat
-                    t_s: '10:00'
-                    d_energy: 5
-                    features: [victim]
-                    max_range: 3
-                    arc: 360
-                    angles: [0]
-                mapper:
-                    type: map
-                    capability: 1
-                    model: map_capability.fis
-                    t_s: '01:00'
-                    d_energy: 1
-                    features: [terrain, destruction, population]
-                    max_range: 7
-                    arc: 90
-                    angles: [0, 45, 90, 135, 180, 225, 270, 315]
-  
+        uav: 
+            count: 1
+            q_init: [[1,1]]
+        crawler:
+            count: 1
+            q_init: [[1,1]]

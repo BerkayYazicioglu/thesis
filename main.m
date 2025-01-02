@@ -6,20 +6,22 @@ clc
 clear 
 close
 
-addpath("utils")
-addpath("constraints")
-addpath("task_allocators")
-addpath("gui")
+addpath("src")
+addpath("src/utils")
+addpath("src/constraints")
+addpath("src/task_allocators")
+addpath("src/gui")
+addpath("src/charger_controllers/")
 
 %% Get config
-settings = yaml.loadFile('../config.yaml');
+settings = yaml.loadFile('config.yaml');
 % create individual robot entries
 types = fieldnames(settings.mission.robots);
 for r = 1:length(types)
     type = types{r};
     count = settings.mission.robots.(type).count;
     for i = 1:count
-        r_params = rmfield(settings.mission.robots.(type), 'count');
+        r_params = yaml.loadFile(type+".yaml");
         r_params.q_init = settings.mission.robots.(type).q_init{i};
         robots.(type+"_"+num2str(i)) = r_params;
     end
@@ -61,7 +63,7 @@ result_dir = inputdlg({'Enter save folder name'}, ...
                       'Save simulation results', ...
                       1, ...
                       {'simulation'});
-result_dir = "../results/" + result_dir{1};
+result_dir = "results/" + result_dir{1};
 mkdir(result_dir);
 
 gui.export_figures(result_dir);

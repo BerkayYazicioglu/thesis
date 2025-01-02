@@ -1,0 +1,24 @@
+max_step: 100
+height: 100
+speed: 10
+crit_energy: 0
+energy_per_m: 0.1
+charge_per_s: 0.15
+color: white
+policy:
+    preprocessing: closest
+    num_tasks: 25
+    optimizer: brute_force
+    control_horizon: 1
+    prediction_horizon: 10
+capabilities:
+    mapper:
+        type: map
+        capability: 0.7
+        model: map_capability.fis
+        t_s: '01:00'
+        d_energy: 10
+        features: [terrain, destruction, population]
+        max_range: 5
+        arc: 360
+        angles: [0]

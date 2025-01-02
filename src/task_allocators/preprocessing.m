@@ -1,7 +1,6 @@
 function output = preprocessing(robot)
 %PREPROCESSING Find the closest (Euclidean) tasks the robot is able to perform
 %              to the given node using shortest path distance on the map 
-t0 = tic;
 
 num_tasks = robot.policy.num_tasks;
 output.outcomes = table();
@@ -19,7 +18,6 @@ accessible = robot.map.Nodes.Name(accessible);
 tasks = robot.mission.tasks(ismember([robot.mission.tasks.node], accessible));
 tasks = tasks([arrayfun(@(t) ismember(robot.id, t.R_k), tasks)]);
 if isempty(tasks)
-    disp(robot.id + " | preprocessing (no valid tasks) | " + toc(t0));
     return;
 end
 
@@ -52,6 +50,5 @@ for i = 1:length(tasks)
     end
 end
 
-disp(robot.id + " | preprocessing | " + toc(t0));
 end
 

@@ -5,7 +5,7 @@ function [conflicts, schedules] = detect_conflicts(mission)
 
 % combine the actions per schedule 
 schedules = timetable();
-filtered_actions = ["none" "charge"];
+filtered_actions = ["none" "charge" "charge_done"];
 for r = 1:length(mission.robots)
     schedule = mission.robots(r).schedule;
     schedule = schedule(~ismember(schedule.action, filtered_actions), :);

@@ -84,6 +84,7 @@ function result = fitness(x)
     % check for constraints
     const = arrayfun(@(n) x(conflict_lookup(n,1)) + x(conflict_lookup(n,2)) - 1, ...
                      1:size(conflict_lookup,1));
+    const(end+1) = 1 - sum(x);
     result.Fval = -u;
     result.Ineq = const;
 end
@@ -137,6 +138,24 @@ for i = 1:length(robot_idx)
         end
         % plan new path
         output.pp.(robot.id) = robot.path_planner();
+        % if charge_flag is raised, construct the return path
+        if output.pp.(robot.id).charge_flag
+            if robot.state == "idle"
+                robot.schedule = timetable(mission.time, ...
+                        robot.node, "none", 100, ...
+                        'VariableNames', {'node', 'action', 'energy'});
+            else
+                % override return schedule
+                robot.schedule = generate_return_path(robot, ...
+                    robot.node, ...
+                    mission.time, ...
+                    robot.energy);
+            end
+        else
+            robot.generate_schedule([output.pp.(robot.id).tasks.node], ...
+                                    output.pp.(robot.id).actions, ...
+                                    robot.time);
+        end
         % unflag the tasks
         for ii = 1:length(task_idx)
             mission.tasks(task_idx(ii)).R_k(end+1) = robot.id;
@@ -144,7 +163,7 @@ for i = 1:length(robot_idx)
     else
         new_actions = new_schedule.action;
         new_nodes = new_schedule.node;
-        robot.generate_schedule(new_nodes, new_actions);
+        robot.generate_s.chedule(new_nodes, new_actions, robot.time);
     end
 end
 

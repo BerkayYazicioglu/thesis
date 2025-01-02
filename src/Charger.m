@@ -13,7 +13,7 @@ classdef Charger < handle
         node string;
         time duration;
         schedule timetable;
-        R_k timetable; % docked robots until corresponding time
+        idle logical = false;
 
         world World;
         mission Mission;
@@ -47,8 +47,6 @@ classdef Charger < handle
             obj.time.Format = 'hh:mm:ss';
             obj.schedule = timetable(obj.time, obj.node, ...
                 'VariableNames', {'node'});
-            obj.R_k = timetable(duration.empty(0,1), string.empty, ...
-                'VariableNames', {'robot_id'});
 
             % history
             obj.history = timetable(obj.time, obj.node,...
@@ -58,32 +56,29 @@ classdef Charger < handle
         %% Charge a robot
         function charge(obj, robot)
             if obj.node ~= robot.node
-                error("Robot can not be charged, needs to be on the same node");
+                warning("Robot and charger need to be on the same node");
+                robot.node = obj.node;
             end
-            robot.energy = 100;
-            robot.time = robot.time + robot.charge_s;
-            obj.R_k(end+1,:) = {robot.id};
-            obj.R_k.Time(end) = robot.time;
+            de = 100 - robot.energy;
+            robot.schedule = timetable(robot.time + seconds(de/robot.charge_per_s), ...
+                         obj.node, "charge_done", 100, ...
+                         'VariableNames', {'node', 'action', 'energy'});
+            robot.return_schedule(:,:) = [];
         end
 
         %% Perform the next action on the schedule
         function run(obj)
             % move to target
+            obj.idle = obj.node == obj.schedule.node(1);
             obj.move(obj.schedule.node(1));
             obj.time = obj.schedule.Time(1);
-            % update Rk
-            delete_row_idx = [];
-            for i = 1:height(obj.R_k)
-                robot = obj.mission.robots([obj.mission.robots.id] == obj.R_k.robot_id(i));
-                if robot.time > obj.R_k.Time(i)
-                    % robot moved away
-                    delete_row_idx(end+1) = i; 
-                else
-                    % robot is still docked
+            for r = 1:length(obj.mission.robots)
+                robot = obj.mission.robots(r);
+                if robot.state == "idle"
                     robot.node = obj.node;
+                    robot.update_maps();
                 end
             end
-            obj.R_k(delete_row_idx,:) = [];
             obj.schedule(1,:) = [];
             % history
             obj.history(obj.time, :) = {obj.node};
@@ -93,62 +88,8 @@ classdef Charger < handle
         function path_planner(obj)
             if obj.policy.optimizer == "static"
                 obj.schedule = timetable(seconds(inf), obj.node, 'VariableNames', {'node'});
-            elseif obj.policy.optimizer == "dynamic"
-                % remove the infeasable edges
-                c = find(~obj.traversability(obj.mission.map.Edges.EndNodes));
-                map = obj.mission.map.rmedge(obj.mission.map.Edges.EndNodes(c,1), ...
-                                             obj.mission.map.Edges.EndNodes(c,2));
-                map = map.rmnode(map.Nodes.Name(~map.Nodes.visible));
-                % get only the accessible nodes
-                [bin, ~] = conncomp(map);
-                candidates = map.Nodes.Name(bin == bin(map.findnode(obj.node)));
-                % get all candidates that are within task proximity range
-                task_nodes = unique([obj.mission.tasks.node]);
-                valid_area = [arrayfun(@(x) obj.mission.map.nearest(x, ...
-                    obj.policy.task_proximity, ...
-                    'Method', 'unweighted')', task_nodes, ...
-                    'UniformOutput', false)];
-                valid_area = unique([valid_area{:}]);
-                valid_area = setdiff(valid_area, task_nodes);
-                valid_area = [valid_area obj.node];
-                % filter candidates that match the valid area
-                candidates = candidates(ismember(candidates, valid_area));
-
-                % find the unweighted center of mass of tasks
-                locs = obj.world.get_coordinates(task_nodes);
-                com = [mean(locs(:,1)) mean(locs(:,2))];
-                % find the candidate closest to the goal
-                candidate_locs = obj.world.get_coordinates(candidates);
-                distances = vecnorm((com - candidate_locs)');
-                [~, idx] = min(distances);
-                candidate_goal = candidates(idx);
-                [p, ~, edges] = map.shortestpath(obj.node, candidate_goal);
-
-                % make sure to not plan before the robot predictions
-                robot_max_t = seconds(zeros(1,length(obj.mission.robots)));
-                for r = 1:length(obj.mission.robots)
-                    % robot is on the way to dock
-                    if ~isempty(obj.mission.robots(r).schedule)
-                        robot_max_t(r) = obj.mission.robots(r).schedule.Time(end);
-                    else
-                        robot_max_t(r) = obj.mission.robots(r).time;
-                    end
-                end
-                t_start = max(obj.time, max(robot_max_t)) + seconds(1);
-                % generate the schedule
-                if length(p) > 1
-                    dt = [arrayfun(@(x) obj.world.environment.Edges(x,:).Weight / obj.speed, edges)];
-                    t = seconds([arrayfun(@(x) sum(dt(1:x)), 1:length(dt))]) + t_start;
-                    p(1) = [];
-                else
-                    t = t_start;
-                end
-                max_length = min(obj.policy.control_horizon, length(p));
-                t = t(1:max_length);
-                p = p(1:max_length);
-                for i = 1:length(t)
-                    obj.schedule(t(i),:) = {p(i)}; 
-                end
+            else
+                feval(obj.policy.optimizer, obj);
             end
         end
 
@@ -189,6 +130,11 @@ classdef Charger < handle
                                     'MarkerFaceColor', obj.color, ...
                                     'MarkerSize', 10);
             % path handles
+            handles.path = plot(parent_handle,...
+                                obj.world.X(str2double(obj.node)),...
+                                obj.world.Y(str2double(obj.node)),...
+                                'Color', 'white', ...
+                                'LineWidth', 1);
             hold(parent_handle, 'off');
         end
 
@@ -199,6 +145,9 @@ classdef Charger < handle
                 'XData', obj.world.X(str2double(obj.node)), ...
                 'YData', obj.world.Y(str2double(obj.node)));
             % update paths
+            set(handles.path, ...
+                'XData', obj.world.X(str2double(obj.schedule.node)), ...
+                'YData', obj.world.Y(str2double(obj.schedule.node)));
         end
     end
 end
