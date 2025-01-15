@@ -19,9 +19,9 @@ function handles = energy_plot(gui, handles)
         legend(gui.plot_axes, gui.mission.robots.id);
         grid(gui.plot_axes, "on");
         xtickformat(gui.plot_axes, 'hh:mm:ss');
-        xlabel('timestamp');
-        ylabel('energy');
-        title('Energy level of robots');
+        xlabel(gui.plot_axes, 'timestamp');
+        ylabel(gui.plot_axes, 'energy');
+        title(gui.plot_axes, 'Energy level of robots');
 
 
         hold(gui.plot_axes, 'off');

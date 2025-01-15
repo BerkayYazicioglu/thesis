@@ -30,16 +30,16 @@ function handles = tasks_plot(gui, handles)
                 'Color', c(r,:));
 
             % plots for legend
-            legend_entries{r} = plot(nan, 'Color', c(r,:));
+            legend_entries{r} = plot(gui.plot_axes, nan, 'Color', c(r,:));
         end
-        legend_entries{end+1} = scatter(nan,nan,'filled','green');
-        legend_entries{end+1} = scatter(nan,nan,'filled','red');
-        legend(gui.plot_axes, [legend_entries{:}], [gui.mission.robots.id "spawned" "completed"]);
+        legend_entries{end+1} = scatter(gui.plot_axes, nan,nan,'filled','green');
+        legend_entries{end+1} = scatter(gui.plot_axes, nan,nan,'filled','red');
+        legend([legend_entries{:}], [gui.mission.robots.id "spawned" "completed"]);
         grid(gui.plot_axes, "on");
         xtickformat(gui.plot_axes, 'hh:mm:ss');
-        xlabel('timestamp');
-        ylabel('task count');
-        title('Number of spawned and completed tasks of robots');
+        xlabel(gui.plot_axes, 'timestamp');
+        ylabel(gui.plot_axes, 'task count');
+        title(gui.plot_axes, 'Number of spawned and completed tasks of robots');
 
 
         hold(gui.plot_axes, 'off');

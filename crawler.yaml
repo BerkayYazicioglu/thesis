@@ -2,7 +2,7 @@ max_step: 100
 height: 0.1
 speed: 0.5
 crit_energy: 0
-energy_per_m: 1
+energy_per_m: 0.5
 charge_per_s: 0.15
 color: red
 policy:

@@ -19,9 +19,9 @@ function handles = victim_plot(gui, handles)
         legend(gui.plot_axes, gui.mission.robots.id);
         grid(gui.plot_axes, "on");
         xtickformat(gui.plot_axes, 'hh:mm:ss');
-        xlabel('timestamp');
-        ylabel('victim count');
-        title('Number of unique victim detection by robots');
+        xlabel(gui.plot_axes, 'timestamp');
+        ylabel(gui.plot_axes, 'victim count');
+        title(gui.plot_axes, 'Number of unique victim detection by robots');
 
 
         hold(gui.plot_axes, 'off');

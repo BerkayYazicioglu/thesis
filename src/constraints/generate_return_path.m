@@ -1,12 +1,8 @@
-function return_schedule = generate_return_path(robot, node, time, energy)
+function return_schedule = generate_return_path(robot, node, time, energy, charger_nodes, charger_times, flag)
 %GENERATE_RETURN_PATH Constructs a return path to the charger
 return_schedule = timetable();
 time.Format = 'hh:mm:ss';
 
-charger_nodes = [robot.mission.charger.node;
-                 robot.mission.charger.schedule.node];
-charger_times = [robot.mission.charger.schedule.Time;
-                 seconds(inf)];
 % generate paths to all charger nodes and calculate times
 for i = 1:length(charger_nodes)
     [p, ~, edges] = robot.map.shortestpath(node, charger_nodes(i));
@@ -31,7 +27,8 @@ for i = 1:length(charger_nodes)
         return
     end  
 end
-error("Robot can not return safely to the charger.");
-   
+if flag
+    error("Robot can not return safely to the charger.");
+end
 end
 

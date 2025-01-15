@@ -3,12 +3,12 @@ height: 1
 speed: 3
 crit_energy: 0
 energy_per_m: 0.1
-charge_per_s: 0.05
+charge_per_s: 0.1
 color: black
 policy:
     preprocessing: closest
     num_tasks: 25
-    optimizer: brute_force
+    optimizer: random
     control_horizon: 1
     prediction_horizon: 10
 capabilities:

@@ -21,9 +21,9 @@ function handles = utility_plot(gui, handles)
         legend(gui.plot_axes, gui.mission.robots.id);
         grid(gui.plot_axes, "on");
         xtickformat(gui.plot_axes, 'hh:mm:ss');
-        xlabel('timestamp');
-        ylabel('utility value');
-        title('Utility values of the task allocations of robots');
+        xlabel(gui.plot_axes, 'timestamp');
+        ylabel(gui.plot_axes, 'utility value');
+        title(gui.plot_axes, 'Utility values of the task allocations of robots');
 
         hold(gui.plot_axes, 'off');
     end

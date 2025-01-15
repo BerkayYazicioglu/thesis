@@ -4,8 +4,6 @@ function output = cooperation(mission, schedules, conflicts)
 % schedules -> combined schedules of all robots
 % conflicts -> table of indices that are conflicting each other on the
 %               combined schedules
-t0 = tic;
-
 max_iter = 500;
 
 % find the cache entry of the latest task allocation per robot
@@ -74,7 +72,7 @@ function result = fitness(x)
                 dt = mission.robots(robot_idx_(k)).detector.t_s;
             end
             t_cur = t_cur + T{robot_idx_(k)}(prev, kk+1) + dt;
-            u = u + mcdm(mission.mcdm.weights, ...
+            u = u + mcdm(mission.mcdm, ...
                          1-min(t_cur, t_max)/t_max, ...
                          robot_cache.u_map(kk), ...
                          robot_cache.u_search(kk));
@@ -146,11 +144,18 @@ for i = 1:length(robot_idx)
                         'VariableNames', {'node', 'action', 'energy'});
             else
                 % override return schedule
+                charger_nodes = [mission.charger.node;
+                                 mission.charger.schedule.node];
+                charger_times = [mission.charger.schedule.Time;
+                                 seconds(inf)];
                 robot.schedule = generate_return_path(robot, ...
-                    robot.node, ...
-                    mission.time, ...
-                    robot.energy);
-            end
+                                                      robot.node, ...
+                                                      mission.time, ...
+                                                      robot.energy, ...
+                                                      charger_nodes, ...
+                                                      charger_times, ...
+                                                      true);
+            end 
         else
             robot.generate_schedule([output.pp.(robot.id).tasks.node], ...
                                     output.pp.(robot.id).actions, ...
@@ -163,13 +168,11 @@ for i = 1:length(robot_idx)
     else
         new_actions = new_schedule.action;
         new_nodes = new_schedule.node;
-        robot.generate_s.chedule(new_nodes, new_actions, robot.time);
+        robot.generate_schedule(new_nodes, new_actions, robot.time);
     end
 end
 
 output.u = fval;
 output.trials = trials;
-
-disp("mission | cooperation | " + toc(t0));
 end
 

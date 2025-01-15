@@ -6,7 +6,6 @@ function output = brute_force_task_allocator(robot, preprocessing)
 % charge_flag -> return to the charger at the end of the tasks
 % u -> utility of the selected allocation
 % cache -> optimization cache
-t0 = tic;
 
 % parameters
 max_iter = 100;
@@ -55,7 +54,7 @@ function u = fitness(x)
         u_map(1:prev_n) = cache.u_map{cache_idx}(1:prev_n);
         u_search(1:prev_n) = cache.u_search{cache_idx}(1:prev_n);
         % calculate the aggregated utility
-        prev_u = mcdm(robot.mission.mcdm.weights, ...
+        prev_u = mcdm(robot.mission.mcdm, ...
                       1-min(t_(1:prev_n), t_max)./t_max, ...
                       u_map(1:prev_n), ...
                       u_search(1:prev_n)); 
@@ -76,7 +75,8 @@ function u = fitness(x)
         if n > 1
             type_mask = [tasks_(1:n-1).type] == cur_type;
             if any(type_mask)
-                prev_tasks = tasks_(type_mask);
+                prev_tasks = x(1:n-1);
+                prev_tasks = prev_tasks(type_mask);
                 prev_actions = actions_(type_mask);
                 prev_nodes = [arrayfun(@(n_) preprocessing.outcomes.nodes( ...
                     preprocessing.outcomes.task_idx == prev_tasks(n_) & ...
@@ -98,13 +98,14 @@ function u = fitness(x)
             actions_(n) = "none";
             u_map(n) = 0;
             u_search(n) = 0;
+            u_cur = u_;
         else
             U_ = dictionary("map", 0, "search", 0);
             [U_(cur_type), max_idx] = max(cur_result.sum_values);
             actions_(n) =  cur_result.actions(max_idx);
             t_cur = t_cur + preprocessing.dt(cur_task_idx);
             e_cur = e_cur - preprocessing.de(cur_task_idx);
-            u_cur = u_ + mcdm(robot.mission.mcdm.weights, ...
+            u_cur = u_ + mcdm(robot.mission.mcdm, ...
                               1-min(t_cur, t_max)/t_max, ...
                               U_("map"), ...
                               U_("search")); 
@@ -167,6 +168,7 @@ if isempty(cache) || isempty(preprocessing.tasks)
     output.charge_flag = true;
     output.u = NaN;
     output.cache = cache;
+    output.t_max = t_max;
 else
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
     cache.t(:) = cellfun(@(x) x + robot.time, cache.t(:), 'UniformOutput', false); 
@@ -180,7 +182,7 @@ else
     output.charge_flag = false;
     output.u = max_u;
     output.cache = cache;
+    output.t_max = t_max;
 end
 
-disp(robot.id + " | brute_force_task_allocator | " + toc(t0));
 end

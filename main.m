@@ -22,14 +22,10 @@ for r = 1:length(types)
     count = settings.mission.robots.(type).count;
     for i = 1:count
         r_params = yaml.loadFile(type+".yaml");
-        r_params.q_init = settings.mission.robots.(type).q_init{i};
         robots.(type+"_"+num2str(i)) = r_params;
     end
 end
 settings.mission.robots = robots;
-
-% load models
-settings.mission.mcdm = load(settings.mission.mcdm).MCDM;
 
 %% Generate the simulation objects
 sim_obj = simulation;
@@ -43,7 +39,9 @@ while mission.time <= mission.t_end && ~mission.all_idle
     % check if the simulation needs to be restarted
     if gui.restart_flag
         t_total = 0;
-        mission = Mission(gui.param_cache, world);
+        world = World(settings.world);
+        mission = Mission(settings.mission, world);
+        gui.world = world;
         gui.init(mission);
         disp('simulation restarted');
     end
@@ -62,9 +60,12 @@ disp("Total simulation time: " + string(t_total) + " s");
 result_dir = inputdlg({'Enter save folder name'}, ...
                       'Save simulation results', ...
                       1, ...
-                      {'simulation'});
-result_dir = "results/" + result_dir{1};
+                      {'1'});
+result_dir = "results/simulation/" + result_dir{1};
 mkdir(result_dir);
 
 gui.export_figures(result_dir);
 save(result_dir + "/mission.mat", "mission"); 
+% save logs
+log = gui.sim.logger.Value;
+save(result_dir + "/log.mat", 'log');

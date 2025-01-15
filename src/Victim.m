@@ -6,9 +6,7 @@ classdef Victim < handle
         idx double; 
         node string;
         t_end duration;
-        pi_detected string;
-        pi_rescued string;
-
+        
         % constructed fields
         t_detected duration;
         t_revisited duration;
@@ -32,8 +30,8 @@ classdef Victim < handle
             obj.node = node;
             obj.idx = idx;
             obj.t_end = t_end;
-            obj.t_detected = seconds(0);
-            obj.t_revisited = seconds(0);
+            obj.t_detected = seconds(-inf);
+            obj.t_revisited = seconds(-inf);
             obj.t_rescued = seconds(inf);
 
             obj.history = timetable(duration.empty(0,1),...
@@ -46,7 +44,7 @@ classdef Victim < handle
             if robot.time < obj.t_rescued
                 obj.t_revisited = robot.time;
                 status = 'revisited';
-                if obj.t_detected == seconds(0)
+                if obj.t_detected == seconds(-inf)
                     obj.t_detected = robot.time;
                     status = 'detected';
                 end

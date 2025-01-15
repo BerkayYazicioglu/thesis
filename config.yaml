@@ -1,15 +1,11 @@
 world:
     data_file: world_generator/data/dummy.json
-    detail_plots: false 
     capture_video: false
-    save_file_name: simulation
     victims:
         count: 100
         t_max: '10:00:00'
         t_min: '05:00:00'
         t_var: '02:00:00'
-        pi_detected: t >= obj.t_detected
-        pi_rescued: t >= obj.rescued
 gui:
     verbose: 2
     save_gif: false
@@ -22,13 +18,13 @@ gui:
                      tasks, 
                      area,
                      distance]
-    charger_types: [static, dynamic]
+    charger_types: [static, center_of_mass]
 mission:
     t_end: '15:00:00'
-    mcdm: MCDM_weights.mat
     PI_model: PI_model.fis
     prediction_errors: false
-    coordination_radius: 5
+    coordination_radius: 3
+    q_init: [1,1]
     tasks:
         map:
             type: map
@@ -36,25 +32,29 @@ mission:
             pi_complete: ~ismember(node, frontier)
         search:
             type: search
-            pi_init: PI >= 0.5
+            pi_init: PI >= 0.6
             pi_complete: ismember(node, robot.detector.measurements.nodes)
+    mcdm:
+        t: 0.4
+        m: 0.5
+        s: 0.7
+        mt: 0.6
+        st: 0.9
+        ms: 0.8
+        mst: 1
     charger:
         id: charger
-        q_init: [1,1]
         max_step: 0.5
         speed: 0.1
         color: white
         policy: 
-            optimizer: dynamic
-            control_horizon: 10
-            task_proximity: 2
+            optimizer: center_of_mass
+            control_horizon: 1
+            task_proximity: 5
     robots:
         ugv:
             count: 1
-            q_init: [[1,1], [1,1]]
         uav: 
-            count: 1
-            q_init: [[1,1]]
+            count: 0
         crawler:
-            count: 1
-            q_init: [[1,1]]
+            count: 0

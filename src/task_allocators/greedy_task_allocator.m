@@ -6,7 +6,6 @@ function output = greedy_task_allocator(robot, preprocessing)
 % charge_flag -> return to the charger at the end of the tasks
 % u -> utility of the selected allocation
 % cache -> optimization cache
-t0 = tic;
 
 all_nodes = [preprocessing.tasks.node];
 D = distance_matrix(robot, all_nodes, 1);
@@ -35,7 +34,7 @@ function u = fitness(x)
         [U(cur_type), max_idx] = max(result.sum_values);
         action_ = result.actions(max_idx);
         % aggregate the utilites
-        u = mcdm(robot.mission.mcdm.weights, 1-T(x)/t_max, U("map"), U("search"));
+        u = mcdm(robot.mission.mcdm, 1-T(x)/t_max, U("map"), U("search"));
         
         % update cache
         cache = [cache; {{x}, ...
@@ -61,6 +60,7 @@ if isempty(cache)
     output.charge_flag = true;
     output.u = NaN;
     output.cache = cache;
+    output.t_max = t_max;
 else
     % find the best cache index
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
@@ -70,8 +70,8 @@ else
     output.charge_flag = false;
     output.u = max_u;
     output.cache = cache;
+    output.t_max = t_max;
 end
 
-disp(robot.id + " | greedy_task_allocator | " + toc(t0));
 end
 

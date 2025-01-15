@@ -19,9 +19,9 @@ function handles = area_plot(gui, handles)
         legend(gui.plot_axes, gui.mission.robots.id);
         grid(gui.plot_axes, "on");
         xtickformat(gui.plot_axes, 'hh:mm:ss');
-        xlabel('timestamp');
-        ylabel('number of locations');
-        title('Total area mapped by robots');
+        xlabel(gui.plot_axes, 'timestamp');
+        ylabel(gui.plot_axes, 'number of locations');
+        title(gui.plot_axes, 'Total area mapped by robots');
 
         hold(gui.plot_axes, 'off');
     end

@@ -14,10 +14,13 @@ classdef Charger < handle
         time duration;
         schedule timetable;
         idle logical = false;
+        msg string = "";
 
         world World;
         mission Mission;
         history timetable;
+        pp_outputs;
+        opt_results;
     end
     
     methods
@@ -29,7 +32,6 @@ classdef Charger < handle
             %   max_step    : maximum step increase the robot can climb (m)
             %   speed       : travel speed m/s
             %   policy      : policy settings
-            %   q_init      : initial grid location of robot [x y]
 
             obj.world = world;
             obj.mission = mission;
@@ -39,9 +41,11 @@ classdef Charger < handle
             obj.max_step = params.max_step;
             obj.speed = params.speed;
             obj.policy = params.policy;
+            obj.opt_results = struct();
+            obj.pp_outputs = dictionary();
             
             % place the robot 
-            obj.q_init = params.q_init;
+            obj.q_init = mission.q_init;
             obj.node = world.get_id(obj.q_init{1}, obj.q_init{2});
             obj.time = seconds(0); 
             obj.time.Format = 'hh:mm:ss';
@@ -63,11 +67,11 @@ classdef Charger < handle
             robot.schedule = timetable(robot.time + seconds(de/robot.charge_per_s), ...
                          obj.node, "charge_done", 100, ...
                          'VariableNames', {'node', 'action', 'energy'});
-            robot.return_schedule(:,:) = [];
         end
 
         %% Perform the next action on the schedule
         function run(obj)
+            obj.msg = "";
             % move to target
             obj.idle = obj.node == obj.schedule.node(1);
             obj.move(obj.schedule.node(1));
@@ -89,7 +93,10 @@ classdef Charger < handle
             if obj.policy.optimizer == "static"
                 obj.schedule = timetable(seconds(inf), obj.node, 'VariableNames', {'node'});
             else
-                feval(obj.policy.optimizer, obj);
+                t0 = tic;
+                obj.opt_results = feval(obj.policy.optimizer, obj);
+                obj.pp_outputs(obj.time) = obj.opt_results;
+                obj.msg = sprintf('%-10s | %-30s | %.4f', obj.id, obj.policy.optimizer, toc(t0));
             end
         end
 
@@ -135,6 +142,11 @@ classdef Charger < handle
                                 obj.world.Y(str2double(obj.node)),...
                                 'Color', 'white', ...
                                 'LineWidth', 1);
+            % map handles
+            handles.map = imagesc(parent_handle, ...
+                                 [obj.world.X(1,1) obj.world.X(1,end)], ...
+                                 [obj.world.Y(1,1) obj.world.Y(end,1)], ...
+                                 zeros([obj.world.size(), 3]));
             hold(parent_handle, 'off');
         end
 
@@ -148,6 +160,13 @@ classdef Charger < handle
             set(handles.path, ...
                 'XData', obj.world.X(str2double(obj.schedule.node)), ...
                 'YData', obj.world.Y(str2double(obj.schedule.node)));
+            % update maps
+            if isfield(obj.opt_results, 'candidates')
+                c = 0.4 * ones(obj.world.size());
+                c(str2double(obj.opt_results.candidates)) = 0;
+                set(handles.map, 'AlphaData', c);
+            end
+
         end
     end
 end

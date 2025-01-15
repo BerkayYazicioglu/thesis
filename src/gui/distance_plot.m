@@ -19,9 +19,9 @@ function handles = distance_plot(gui, handles)
         legend(gui.plot_axes, gui.mission.robots.id);
         grid(gui.plot_axes, "on");
         xtickformat(gui.plot_axes, 'hh:mm:ss');
-        xlabel('timestamp');
-        ylabel('m');
-        title('Total distance travelled by robots');
+        xlabel(gui.plot_axes, 'timestamp');
+        ylabel(gui.plot_axes, 'm');
+        title(gui.plot_axes, 'Total distance travelled by robots');
 
 
         hold(gui.plot_axes, 'off');

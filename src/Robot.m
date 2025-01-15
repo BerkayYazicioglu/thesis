@@ -29,8 +29,10 @@ classdef Robot < handle
         mission Mission;
 
         history timetable;
+        pp_outputs;
         return_schedule timetable;
         cache table; 
+        msg string = "";
     end
     
     methods
@@ -48,7 +50,6 @@ classdef Robot < handle
             %   PI_model    : path of the PI model
             %   policy      : policy settings
             %   capabilities: capability settings
-            %   q_init      : initial grid location of robot [x y]
 
             obj.world = world;
             obj.mission = mission;
@@ -62,9 +63,10 @@ classdef Robot < handle
             obj.crit_energy = params.crit_energy;
             obj.energy_per_m = params.energy_per_m;
             obj.policy = params.policy;
+            obj.pp_outputs = dictionary();
             
             % place the robot 
-            obj.q_init = params.q_init;
+            obj.q_init = mission.q_init;
             obj.node = world.get_id(obj.q_init{1}, obj.q_init{2});
             obj.time = seconds(0);
             obj.time.Format = 'hh:mm:ss';
@@ -102,6 +104,7 @@ classdef Robot < handle
             for i = 1:length(obj.capabilities)
                 obj.(obj.capabilities(i)).measurements = table();
             end
+            obj.msg = "";
             % preliminaries
             obj.time = obj.schedule.Time(1);
             obj.energy = obj.schedule.energy(1);
@@ -164,23 +167,26 @@ classdef Robot < handle
                     % if charge_flag is raised, use the return path
                     if results.pp.charge_flag
                         obj.schedule = obj.return_schedule;
+                        obj.return_schedule(:,:) = [];
                     else
                         obj.generate_schedule([results.pp.tasks.node], results.pp.actions, obj.time);
                         % check for conflicts
                         [conflicts, conflict_schedules] = detect_conflicts(obj.mission);
                         if ~isempty(conflicts)
+                            t0 = tic;
                             results.coop = cooperation(obj.mission, conflict_schedules, conflicts);
+                            obj.msg = obj.msg +  sprintf('\n%-10s | %-30s | %.4f', obj.id, 'cooperation', toc(t0));
                         end
                     end
                 end
             end
-            obj.log_history(results.tt);
+            obj.log_history(results);
         end
 
         %% Log the lates robot state
-        function log_history(obj, tt)
+        function log_history(obj, results)
             h_node = obj.node;
-            h_action = tt.action(1);
+            h_action = results.tt.action(1);
             [~, d] = obj.world.environment.shortestpath(h_node, obj.history.node(end));
             h_distance = obj.history.distance(end) + d;
             h_mapped_area = obj.history.mapped_area(end);
@@ -188,16 +194,24 @@ classdef Robot < handle
                 h_mapped_area = h_mapped_area + sum(obj.mapper.measurements.is_new);
             end
             new_victims = sum([obj.world.victims.t_detected] == obj.time);
+            if h_action == "none"
+                new_victims = 0;
+            end
             h_detected_victims = obj.history.detected_victims(end) + new_victims;
             h_energy = obj.energy;
             
-            obj.history(obj.time,:) = {h_node, ...
-                                       h_action, ...
-                                       h_distance, ...
-                                       h_mapped_area, ...
-                                       h_detected_victims, ...
-                                       h_energy};   
+            obj.history(end+1,:) = {h_node, ...
+                                    h_action, ...
+                                    h_distance, ...
+                                    h_mapped_area, ...
+                                    h_detected_victims, ...
+                                    h_energy};   
+            obj.history.Time(end) = obj.time;
+            % save path planner results if applicable
+            if isfield(results, 'pp')
+                obj.pp_outputs(obj.time) = results.pp;
             end
+        end
 
         %% Path planner
         function opt_results = path_planner(obj)
@@ -208,7 +222,9 @@ classdef Robot < handle
 
             % employ task allocation strategy
             optimizer_fcn = obj.policy.optimizer + "_task_allocator";
+            t0 = tic;
             opt_results = feval(optimizer_fcn, obj, pp);
+            obj.msg = sprintf('%-10s | %-30s | %.4f', obj.id, optimizer_fcn, toc(t0));
 
             % results
             obj.cache = opt_results.cache; 
@@ -243,7 +259,17 @@ classdef Robot < handle
                 obj.schedule(last_time, :) = {nodes(i+1), actions(i), last_energy};
             end
             % generate the return schedule from the last action
-            obj.return_schedule = generate_return_path(obj, nodes(end), last_time, last_energy);
+            charger_nodes = [obj.mission.charger.node;
+                             obj.mission.charger.schedule.node];
+            charger_times = [obj.mission.charger.schedule.Time;
+                             seconds(inf)];
+            obj.return_schedule = generate_return_path(obj, ...
+                                                       nodes(end), ...
+                                                       last_time, ...
+                                                       last_energy, ...
+                                                       charger_nodes, ...
+                                                       charger_times, ...
+                                                       true);
         end
 
         %% Move the robot 

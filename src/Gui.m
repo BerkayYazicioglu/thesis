@@ -7,9 +7,8 @@ classdef Gui < handle
         restart_flag = false;
 
         sim_handles;
-        plot_handle;
         plot_axes;
-        param_cache;
+        plot_handle;
         settings;
     end
     
@@ -19,7 +18,7 @@ classdef Gui < handle
             obj.settings = params;
             obj.sim = sim_obj;
             obj.world = world;
-            obj.plot_axes = axes();
+            obj.plot_axes = sim_obj.data;
             obj.init(mission);
         end
 
@@ -27,9 +26,10 @@ classdef Gui < handle
         function init(obj, mission)
             obj.restart_flag = false;
             delete(obj.sim.world.Children)
-            % save parameter cache
-            obj.param_cache = package_mission_settings(mission);
             obj.mission = mission; 
+
+            obj.sim.logger.Value = "";
+            obj.sim.system.Value = "";
             % plot handles
             obj.sim_handles.world = obj.world.init_gui(obj.sim.world);
             obj.sim_handles.mission = mission.init_gui(obj.sim.world);
@@ -37,34 +37,36 @@ classdef Gui < handle
                 obj.sim_handles.(mission.robots(i).id) = mission.robots(i).init_gui(obj.sim.world);
                 obj.sim_handles.(mission.robots(i).id).map.Visible = 'off';
             end
+            obj.sim_handles.mission.charger.map.Visible = 'off';
 
             obj.sim_handles.world.victims.Visible = 'off';
             obj.sim_handles.world.destruction.Visible = 'off';
             obj.sim_handles.world.population.Visible = 'off';
 
             % simulation tab
-            obj.sim.map_select.Items = ["global", [mission.robots.id]];
+            obj.sim.map_select.Items = ["global", "charger", [mission.robots.id]];
             obj.sim.map_select.Value = "global";
             obj.sim.data_select.Items = [obj.settings.analysis_types{:}];
             obj.sim.data_select.Value = obj.settings.analysis_types{1};
             % settings tab
             obj.sim.t_end.Value = string(mission.t_end);
-            obj.sim.mcdm_select.Items = mission.mcdm.weights.key;
-            obj.sim.mcdm_select.Value = mission.mcdm.weights.key(1);
-            obj.sim.mcdm_value.Value = mission.mcdm.weights.weight(1);
-            obj.sim.charger_select.Items = [obj.settings.charger_types{:}];
-            obj.sim.charger_select.Value = mission.settings.charger.policy.optimizer;
-            obj.sim.preprocessing_select.Items = [obj.settings.preprocessing_types{:}];
-            obj.sim.optimizer_select.Items = [obj.settings.optimizer_types{:}];
+            obj.sim.mcdm_select.Items = mission.mcdm.key;
+            obj.sim.mcdm_select.Value = mission.mcdm.key(1);
+            obj.sim.mcdm_value.Value = mission.mcdm.weight(1);
+            obj.sim.coordination_radius.Value = mission.coordination_radius;
+            obj.sim.x0.Value = mission.q_init{1};
+            obj.sim.y0.Value = mission.q_init{2};
+            obj.sim.charger_control_horizon.Value = mission.charger.policy.control_horizon;
+            obj.sim.task_proximity.Value = mission.charger.policy.task_proximity;
+            obj.sim.charger_optimizer.Value = mission.charger.policy.optimizer;
+            if mission.prediction_errors
+                obj.sim.prediction_errors.Color = [0.39 0.83 0.07];
+            else
+                obj.sim.prediction_errors.Color = [0.9412 0.9412 0.9412];
+            end
             obj.sim.robot_select.Items = [mission.robots.id];
             obj.sim.robot_select.Value = mission.robots(1).id;
             get_robot_settings(obj, mission.robots(1).id);
-
-            sim_size = obj.world.size();
-            obj.sim.x_init.Limits = [1, sim_size(1)];
-            obj.sim.y_init.Limits = [1, sim_size(2)];
-            obj.sim.prediction_errors.BackgroundColor = [0.9412 0.9412 0.9412];
-            obj.sim.prediction_errors.Value = 0;
 
             % plot handle
             obj.plot_handle = feval(obj.sim.data_select.Value+"_plot", obj);
@@ -74,15 +76,33 @@ classdef Gui < handle
             obj.sim.map_select.ValueChangedFcn = @obj.select_map_cb;
             obj.sim.data_select.ValueChangedFcn = @obj.select_data;
             % settings tab
-            obj.sim.save.ButtonPushedFcn = @obj.save_cb;
             obj.sim.robot_select.ValueChangedFcn = @obj.select_robot_cb;
             obj.sim.sensor_select.ValueChangedFcn = @obj.select_sensor_cb;
-            obj.sim.prediction_errors.ValueChangedFcn = @obj.toggle_errors_cb;
             obj.sim.mcdm_select.ValueChangedFcn = @obj.select_mcdm_cb;
         end
 
         %% Run GUI updates
         function run(obj)
+            arrayfun(@(robot) obj.print(robot.msg), obj.mission.robots);
+            obj.print(obj.mission.charger.msg);
+
+            system = sprintf('mission time: %s\n\n', string(obj.mission.time));
+            for r = 1:length(obj.mission.robots)
+                robot = obj.mission.robots(r);
+                r_str = robot.id + sprintf('\n %15s', string(robot.time));
+                r_str = r_str + sprintf('\n %15.1f %%', string(robot.energy));
+                latest_action = find(robot.history.action ~= "none", 1, 'last');
+                if isempty(latest_action)
+                    latest_action = "none";
+                else
+                    latest_action = robot.history.action(latest_action);
+                end
+                r_str = r_str + sprintf('\n %15s\n', latest_action);
+                system = system + r_str;
+            end
+            obj.sim.system.Value = system;
+
+            % verbosity levels
             if obj.settings.verbose == 2
                 if ~obj.mission.gui_update_flag
                     return
@@ -113,8 +133,7 @@ classdef Gui < handle
             end
             % plot axes
             for i = 1:length(obj.sim.data_select.Items)
-                clf(obj.plot_axes.Parent, 'reset');
-                obj.plot_axes = axes();
+                cla(obj.plot_axes, 'reset');
                 obj.plot_handle = feval(obj.sim.data_select.Items(i)+"_plot", obj);
                 exportgraphics(obj.plot_axes, plot_file, 'Append', true);
             end
@@ -122,21 +141,17 @@ classdef Gui < handle
 
         %% Logger
         function print(obj, str)
-            obj.sim.logger.Value = [obj.sim.logger.Value; str];
-            scroll(obj.sim.logger, 'bottom');
+            if strlength(str)
+                obj.sim.logger.Value = [obj.sim.logger.Value; str];
+                scroll(obj.sim.logger, 'bottom');
+            end
         end
 
         %% data selection callback
         function select_data(obj, app, event)
-            clf(obj.plot_axes.Parent, 'reset');
-            obj.plot_axes = axes();
+            cla(obj.plot_axes, 'reset');
             obj.plot_handle = feval(event.Value+"_plot", obj);
             drawnow
-        end
-
-         %% save settings of the selected robot
-        function save_cb(obj, app, event)
-            save_current_settings(obj);
         end
 
         %% map display selection callback
@@ -152,9 +167,15 @@ classdef Gui < handle
                        obj.sim_handles.(id).map.Visible = 'off';
                    end
                end
+               obj.sim_handles.mission.charger.map.Visible = 'off';
+           elseif val == "charger"
+               obj.sim_handles.mission.map.Visible = 'off';
+               arrayfun(@(r) set(obj.sim_handles.(r.id).map,'Visible','off'), obj.mission.robots);
+               obj.sim_handles.mission.charger.map.Visible = 'on';
            else
                obj.sim_handles.mission.map.Visible = 'on';
                arrayfun(@(r) set(obj.sim_handles.(r.id).map,'Visible','off'), obj.mission.robots);
+               obj.sim_handles.mission.charger.map.Visible = 'off';
            end
            drawnow
         end
@@ -177,22 +198,10 @@ classdef Gui < handle
             get_sensor_settings(obj, robot_id, sensor);
         end
 
-        %% toggle prediction errors callback
-        function toggle_errors_cb(obj, app, event)
-            val = event.Value;
-            if val
-                app.BackgroundColor = [0.39 0.83 0.07];
-                obj.mission.prediction_errors = true;
-            else
-                app.BackgroundColor = [0.9412 0.9412 0.9412];
-                obj.mission.prediction_errors = false;
-            end
-        end
-
         %% select mcdm criteria
         function select_mcdm_cb(obj, app, event)
-            mcdm_row = event.Value == obj.param_cache.mcdm.weights.key;
-            obj.sim.mcdm_value.Value = obj.param_cache.mcdm.weights.weight(mcdm_row);
+            mcdm_row = event.Value == obj.mission.settings.mcdm.weights.key;
+            obj.sim.mcdm_value.Value = obj.mission.settings.mcdm.weights.weight(mcdm_row);
         end
     end
 end
