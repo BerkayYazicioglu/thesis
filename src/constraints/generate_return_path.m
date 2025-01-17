@@ -16,7 +16,7 @@ for i = 1:length(charger_nodes)
     % check if the robot makes it in time
     if t(end) <= charger_times(i)
         if e(end) <= robot.crit_energy
-            break
+            continue
         end
         % the path is valid
         actions = repmat("none", 1, length(p));

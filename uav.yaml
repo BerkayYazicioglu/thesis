@@ -3,7 +3,7 @@ height: 100
 speed: 10
 crit_energy: 0
 energy_per_m: 0.1
-charge_per_s: 0.15
+charge_per_s: 0.2
 color: white
 policy:
     preprocessing: closest

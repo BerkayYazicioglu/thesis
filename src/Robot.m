@@ -117,16 +117,16 @@ classdef Robot < handle
                 results.pp = obj.path_planner();
                 if results.pp.charge_flag
                     % no tasks are viable
-                    candidate_times = obj.mission.charger.schedule.Time(1) + seconds(1);
+                    candidate_times = obj.mission.charger.schedule.Time(1) + seconds(0.1);
                     filtered_actions = ["none" "charge" "charge_done"];
                     for r = 1:length(obj.mission.robots)
                         if obj.mission.robots(r).state == "running" && ...
                            ~ismember(obj.mission.robots(r).schedule.action(end), filtered_actions)
-                            candidate_times(end+1) = obj.mission.robots(r).schedule.Time(end);
+                            candidate_times(end+1) = obj.mission.robots(r).schedule.Time(end) + seconds(0.1);
                         end
                     end
                     obj.schedule = timetable(min(candidate_times), ...
-                        obj.node, "none", 100, ...
+                        obj.node, "charge_done", 100, ...
                         'VariableNames', {'node', 'action', 'energy'});
                 else
                     % a new plan can be made
@@ -188,6 +188,9 @@ classdef Robot < handle
             h_node = obj.node;
             h_action = results.tt.action(1);
             [~, d] = obj.world.environment.shortestpath(h_node, obj.history.node(end));
+            if obj.state == "idle"
+                d = 0;
+            end
             h_distance = obj.history.distance(end) + d;
             h_mapped_area = obj.history.mapped_area(end);
             if ismember("mapper", obj.capabilities) && ~isempty(obj.mapper.measurements)

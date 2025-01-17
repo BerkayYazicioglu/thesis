@@ -49,12 +49,12 @@ mission:
         color: white
         policy: 
             optimizer: center_of_mass
-            control_horizon: 1
-            task_proximity: 5
+            control_horizon: 100
+            task_proximity: 3
     robots:
         ugv:
             count: 1
         uav: 
-            count: 0
+            count: 1
         crawler:
-            count: 0
+            count: 1

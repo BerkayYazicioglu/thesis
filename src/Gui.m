@@ -83,8 +83,8 @@ classdef Gui < handle
 
         %% Run GUI updates
         function run(obj)
-            arrayfun(@(robot) obj.print(robot.msg), obj.mission.robots);
-            obj.print(obj.mission.charger.msg);
+            arrayfun(@(robot) obj.print(robot), obj.mission.robots);
+            obj.print(obj.mission.charger);
 
             system = sprintf('mission time: %s\n\n', string(obj.mission.time));
             for r = 1:length(obj.mission.robots)
@@ -140,11 +140,14 @@ classdef Gui < handle
         end
 
         %% Logger
-        function print(obj, str)
+        function print(obj, robot)
+            str = robot.msg;
             if strlength(str)
+                str = string(obj.mission.time) + " | " + str;
                 obj.sim.logger.Value = [obj.sim.logger.Value; str];
                 scroll(obj.sim.logger, 'bottom');
             end
+            robot.msg = "";
         end
 
         %% data selection callback

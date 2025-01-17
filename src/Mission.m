@@ -144,7 +144,8 @@ classdef Mission < handle
             
             obj.gui_update_flag = any(flags);
             % check if all robots are idle
-            end_flags = arrayfun(@(x) x.schedule.action(end) == "none", obj.robots) & [obj.robots.state] == "idle";
+            end_flags = arrayfun(@(x) x.history.action(end) == "charge_done", obj.robots) & ...
+                        arrayfun(@(x) x.history.action(end-1) == "charge_done", obj.robots);
             obj.all_idle = all([end_flags obj.charger.idle]);
         end
 

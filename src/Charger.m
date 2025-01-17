@@ -60,7 +60,10 @@ classdef Charger < handle
         %% Charge a robot
         function charge(obj, robot)
             if obj.node ~= robot.node
-                warning("Robot and charger need to be on the same node");
+                d = obj.mission.world.environment.distances(robot.node, obj.node, 'Method', 'unweighted');
+                if d > 1
+                    warning("Robot and charger need to be on the same node (d = " + string(d) + ")");
+                end
                 robot.node = obj.node;
             end
             de = 100 - robot.energy;
@@ -80,6 +83,7 @@ classdef Charger < handle
                 robot = obj.mission.robots(r);
                 if robot.state == "idle"
                     robot.node = obj.node;
+                    robot.schedule.node(1) = obj.node;
                     robot.update_maps();
                 end
             end
