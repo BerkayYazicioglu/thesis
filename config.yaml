@@ -48,7 +48,7 @@ mission:
         speed: 0.1
         color: white
         policy: 
-            optimizer: static
+            optimizer: center_of_mass
             control_horizon: 10
             task_proximity: 3
     robots:
