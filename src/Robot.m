@@ -158,7 +158,9 @@ classdef Robot < handle
                     results.tasks = obj.mission.manage_tasks(obj, results.tt);
                 elseif action(1) == "charge"
                     obj.mission.charger.charge(obj);
-                    obj.state = "idle";
+                    if obj.schedule.action(1) ~= "charge"
+                        obj.state = "idle";
+                    end
                 end
                 
                 % check if a new plan needs to be made
@@ -308,16 +310,21 @@ classdef Robot < handle
                 sub = subgraph(obj.world.environment, ...
                                obj.mapper.measurements.nodes); 
                 sub.Nodes.visible = obj.mapper.measurements.visible;
+                sub.Nodes.robot_id = repmat(obj.id, height(sub.Nodes), 1);
+                sub.Nodes.time = repmat(obj.time, height(sub.Nodes), 1);
                 % get the new nodes with terrain information
                 if isempty(obj.mission.map.Nodes)
-                    new_nodes = sub.Nodes(:, ["Name", obj.mapper.features{:}, "visible"]);
+                     new_nodes = sub.Nodes(:, ["Name", obj.mapper.features{:}, "visible" "time" "robot_id"]);
                 else
                     new_node_idx = ~ismember(sub.Nodes.Name, obj.mission.map.Nodes.Name);
-                    new_nodes = sub.Nodes(new_node_idx, ["Name", obj.mapper.features{:}, "visible"]);
+                    new_nodes = sub.Nodes(new_node_idx, ["Name", obj.mapper.features{:}, "visible" "time" "robot_id"]);
                     % update old nodes
                     old_nodes = obj.mission.map.findnode(sub.Nodes.Name(~new_node_idx));
                     obj.mission.map.Nodes.visible(old_nodes) = ...
                         obj.mission.map.Nodes.visible(old_nodes) | sub.Nodes.visible(~new_node_idx);
+                    flags = find(~obj.mission.map.Nodes.visible(old_nodes) & sub.Nodes.visible(~new_node_idx));
+                    obj.mission.map.Nodes.robot_id(flags) = repmat(obj.id, numel(flags), 1);
+                    obj.mission.map.Nodes.time(flags) = repmat(obj.time, numel(flags), 1);
                 end
                 % add the subgraph to the map
                 obj.mission.map = obj.mission.map.addnode(new_nodes);

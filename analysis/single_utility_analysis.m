@@ -82,7 +82,7 @@ function single_utility_analysis(result_path, gui, ~)
     xlim(ax, [new_ticks(1) new_ticks(end)]);
     xticklabels(ax, string(new_ticks));
     xtickangle(ax, 90);
-     xlabel(ax, 'time (hh:mm)');
+    xlabel(ax, 'time (hh:mm)');
     title(ax, 'control horizon utility');
     grid(ax, 'on');
     hold(ax, 'off');
