@@ -31,6 +31,7 @@ classdef Gui < handle
             obj.sim.logger.Value = "";
             obj.sim.system.Value = "";
             % plot handles
+            obj.sim.world.Title.String = 'simulation';
             obj.sim_handles.world = obj.world.init_gui(obj.sim.world);
             obj.sim_handles.mission = mission.init_gui(obj.sim.world);
             for i = 1:length(mission.robots)
@@ -128,7 +129,6 @@ classdef Gui < handle
             if obj.settings.save_gif
                 movefile('simulation.gif', dir);
             else
-                obj.sim.world.Title.String = dir;
                 exportgraphics(obj.sim.world, plot_file);
             end
             % plot axes

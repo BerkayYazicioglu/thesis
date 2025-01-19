@@ -16,9 +16,9 @@ capabilities:
         type: map
         capability: 0.7
         model: map_capability.fis
-        t_s: '01:00'
+        t_s: '03:00'
         d_energy: 10
         features: [terrain, destruction, population]
-        max_range: 5
+        max_range: 6
         arc: 360
         angles: [0]

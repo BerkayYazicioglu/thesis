@@ -16,8 +16,8 @@ capabilities:
         type: search
         capability: 0.5
         model: search_capability.mat
-        t_s: '10:00'
-        d_energy: 10
+        t_s: '05:00'
+        d_energy: 5
         features: [victim]
         max_range: 3
         arc: 360

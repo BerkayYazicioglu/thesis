@@ -32,7 +32,7 @@ mission:
             pi_complete: ~ismember(node, frontier)
         search:
             type: search
-            pi_init: PI >= 0.6
+            pi_init: PI >= 0.1
             pi_complete: ismember(node, robot.detector.measurements.nodes)
     mcdm:
         t: 0.4
@@ -48,13 +48,13 @@ mission:
         speed: 0.1
         color: white
         policy: 
-            optimizer: center_of_mass
-            control_horizon: 100
+            optimizer: static
+            control_horizon: 10
             task_proximity: 3
     robots:
         ugv:
-            count: 0
+            count: 1
         uav: 
-            count: 2
+            count: 0
         crawler:
-            count: 3
+            count: 0
