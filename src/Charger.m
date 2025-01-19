@@ -62,7 +62,13 @@ classdef Charger < handle
             if obj.node ~= robot.node
                 d = obj.mission.world.environment.distances(robot.node, obj.node, 'Method', 'unweighted');
                 if d > 1
-                    warning("Robot and charger need to be on the same node (d = " + string(d) + ")");
+                    % check if the robot needs to wait
+                    if ismember(robot.node, obj.schedule.node)
+                        robot.time = obj.schedule.Time(robot.node == obj.schedule.node);
+                        disp("      Robot needs to wait until charger can reach the location");
+                    else
+                        warning("Robot and charger need to be on the same node (d = " + string(d) + ")");
+                    end
                 end
                 robot.node = obj.node;
             end

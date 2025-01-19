@@ -8,7 +8,7 @@ color: red
 policy:
     preprocessing: closest
     num_tasks: 25
-    optimizer: greedy
+    optimizer: brute_force
     control_horizon: 1
     prediction_horizon: 10
 capabilities:

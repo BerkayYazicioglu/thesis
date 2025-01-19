@@ -53,8 +53,8 @@ mission:
             task_proximity: 3
     robots:
         ugv:
-            count: 1
+            count: 0
         uav: 
-            count: 1
+            count: 2
         crawler:
-            count: 1
+            count: 3
