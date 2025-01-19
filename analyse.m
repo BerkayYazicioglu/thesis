@@ -17,7 +17,9 @@ single_run_plots = ["distance"
                     "victim"
                     "heatmap"
                     "optimization"
-                    "task"];
+                    "task"
+                    "utility"
+                    "mission"];
 multi_run_plots = ["distance"
                    "area"
                    "energy"
