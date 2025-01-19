@@ -59,10 +59,6 @@ for i = 1:length(q_inits)
     for ii = 1:repetitions
         disp('experiment: ' + string(ii+repetitions*(i-1)));
 
-        % if ii+repetitions*(i-1) <= 13
-        %     continue
-        % end
-
         world = World(settings.world);
         mission = Mission(settings.mission, world);
         gui = Gui(settings.gui, sim_obj, mission, world);

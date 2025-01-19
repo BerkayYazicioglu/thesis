@@ -2,4 +2,4 @@
 *.asv
 .DS_Store
 /results/
-.*yaml
+*.yaml
