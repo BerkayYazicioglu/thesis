@@ -31,8 +31,9 @@ function single_distance_analysis(result_path, gui, ~)
     combined = sortrows(combined, 'Time');
     if length(mission.robots) > 1
         % plot combined
-        combined = fillmissing(combined, 'previous', 'DataVariables', @isnumeric);
-        combined.total = sum(table2array(combined), 2);
+        combined = fillmissing(timetable2table(combined), ...
+            'previous', 'DataVariables', @isnumeric);
+        combined.total = sum(table2array(combined(:,2:end)), 2);
         plot(ax, combined.Time, combined.total);
         legend(ax, {mission.robots.id "total"}, "Location", "best");
     else

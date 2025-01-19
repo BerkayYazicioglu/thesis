@@ -3,9 +3,10 @@ clc
 clear 
 close
 
-addpath("analysis/"); 
 global gui result_path;
-if exist('gui', 'Var')
+
+addpath("analysis/"); 
+if exist('gui', 'Var') && ~isempty(gui)
     gui.delete;
 end
 
@@ -17,7 +18,9 @@ single_run_plots = ["distance"
                     "victim"
                     "heatmap"
                     "optimization"
-                    "task"];
+                    "utility"
+                    "task"
+                    "mission"];
 multi_run_plots = ["distance"
                    "area"
                    "energy"

@@ -21,7 +21,7 @@ function single_optimization_analysis(result_path, gui, robot_id)
     delete(panel.Children);
     layout = tiledlayout(panel, 4, 1);
     robot = mission.robots([mission.robots.id] == robot_id);
-    % iteratre through robot timesteps
+    % iterate through robot timesteps
     ts = robot.pp_outputs.keys;
     t_data = [];
     u_map_data = [];
