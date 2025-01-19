@@ -26,7 +26,6 @@ function single_mission_analysis(result_path, gui, robot_id)
 
     global t
     t = mission.time * gui.range_select.Value(2) / 100;
-    t_idx = 1;
 
     if nargin == 2
         % need to construct the options
@@ -431,6 +430,11 @@ function single_mission_analysis(result_path, gui, robot_id)
         end
         % check if the charger movement is next
         t_charger = mission.charger.history.Time(find(mission.charger.history.Time > t, 1, 'first'));
+        if mission.charger.policy.optimizer == "static"
+            t_charger = t_new;
+        elseif isempty(t_charger)
+            t_charger = mission.charger.history.Time(end);
+        end
         t = min(t_charger, t_new);
         update(t);
         gui.range_select.Value(2) = 100 * t / mission.time;
@@ -446,6 +450,9 @@ function single_mission_analysis(result_path, gui, robot_id)
         end
         % check if the charger movement is next
         t_charger = mission.charger.history.Time(find(mission.charger.history.Time < t, 1, 'last'));
+        if isempty(t_charger)
+            t_charger = mission.charger.history.Time(1);
+        end
         t = max(t_charger, t_new);
         update(t);
         gui.range_select.Value(2) = 100 * t / mission.time;
