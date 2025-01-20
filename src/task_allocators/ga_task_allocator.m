@@ -31,6 +31,7 @@ end
 
 cache = table({}, {}, [], {}, {}, {}, {}, ...
     'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
+flagged = table({}, 'VariableNames', {'tasks'});
 
 %% fitness function
 function u = fitness(x)
@@ -44,6 +45,16 @@ function u = fitness(x)
     flag = true; 
     start_n = 1;
 
+    % check if a portion of x is flagged infeasable
+    [prev_x, ~] = lcss(flagged.tasks, x);
+    if ~isempty(prev_x)
+        prev_idx = find(cellfun(@(x_) x_ == prev_x, flagged.tasks), 1);
+        if ~isempty(prev_idx)
+            u = inf;
+            return
+        end
+    end
+    
     % check if a portion of x is already calculated
     [prev_x, cache_idx] = lcss(cache.tasks, x);
     if ~isempty(prev_x)
@@ -119,6 +130,7 @@ function u = fitness(x)
                                  t_cur + robot.time, ...
                                  e_cur);
         if ~flag
+            flagged = [flagged; {x(1:n)}];
             n = n - 1;
             break
         end
@@ -157,8 +169,6 @@ for i = 1:size(comb,1)
         mask(mi) = false;
         X(k-1) = cur;
     end
-    % calculate fitness
-    fitness(X);
 end
 
 % get the best result

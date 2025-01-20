@@ -138,10 +138,7 @@ function u = fitness(x)
 end
 
 %% create random unique combinations
-comb = nchoosek(1:length(all_nodes)-1, prediction_horizon);
-if size(comb,1) > max_iter
-    comb = comb(randsample(size(comb,1), max_iter), :);
-end
+comb = sample_combinations(1:length(all_nodes)-1, prediction_horizon, max_iter);
 
 % iterate through the combinations and order the nodes
 for i = 1:size(comb,1)
