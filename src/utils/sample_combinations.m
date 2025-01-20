@@ -58,6 +58,5 @@ function output = sample_combinations(array, k, numSamples)
     if isempty(output)
         error("something is wrong")
     end
-    fprintf('combinations: %d | expected: %d\n', size(output,1), numSamples);
 end
 
