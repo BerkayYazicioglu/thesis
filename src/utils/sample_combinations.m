@@ -16,6 +16,11 @@ function output = sample_combinations(array, k, numSamples)
         end
     end
 
+    if numSamples == 0
+        output = [];
+        return
+    end
+
     n = length(array);
     totalCombinations = factorial(n) / (factorial(k) * factorial(n - k)); 
     if isnan(totalCombinations)
@@ -57,6 +62,12 @@ function output = sample_combinations(array, k, numSamples)
     end
     if isempty(output)
         error("something is wrong")
+    end
+    % pad population if necessary
+    if size(output, 1) < numSamples
+        n_diff = numSamples - size(output, 1);
+        output = [output;
+                  repmat(output(1,:), n_diff, 1)];
     end
 end
 

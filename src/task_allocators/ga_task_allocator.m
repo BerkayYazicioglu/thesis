@@ -7,8 +7,14 @@ function output = ga_task_allocator(robot, preprocessing)
 % u -> utility of the selected allocation
 % cache -> optimization cache
 
-% parameters
-max_iter = 100;
+% ======= params ========
+max_iter = 250;
+n_population = 10;
+n_prev_solution = 5;
+elite_count = 1;
+
+% =======================
+
 prediction_horizon = min(robot.policy.prediction_horizon, length(preprocessing.tasks));
 
 % calculate all distance and travel time pairs
@@ -44,11 +50,12 @@ function u = fitness(x)
     u_search = zeros(1, length(x)); 
     flag = true; 
     start_n = 1;
-
+    
     % check if a portion of x is flagged infeasable
     [prev_x, ~] = lcss(flagged.tasks, x);
-    if ~isempty(prev_x)
-        prev_idx = find(cellfun(@(x_) x_ == prev_x, flagged.tasks), 1);
+    if ~isempty(prev_x) && numel(prev_x) == numel(x)
+        % check if the portion corresponds to the whole flagged entry
+        prev_idx = find(cellfun(@(x_) isequal(x_, prev_x), flagged.tasks), 1);
         if ~isempty(prev_idx)
             u = inf;
             return
@@ -58,6 +65,11 @@ function u = fitness(x)
     % check if a portion of x is already calculated
     [prev_x, cache_idx] = lcss(cache.tasks, x);
     if ~isempty(prev_x)
+        % check if x already was in the cache
+        if isequal(prev_x, x)
+            u = -cache.u(cache_idx);
+            return
+        end
         prev_n = length(prev_x);
         actions_(1:prev_n) = cache.actions{cache_idx}(1:prev_n);
         t_(1:prev_n) = cache.t{cache_idx}(1:prev_n);
@@ -149,26 +161,60 @@ function u = fitness(x)
     u = -u_;
 end
 
-%% create random unique combinations
-comb = nchoosek(1:length(all_nodes)-1, prediction_horizon);
-if size(comb,1) > max_iter
-    comb = comb(randsample(size(comb,1), max_iter), :);
-end
-
-% iterate through the combinations and order the nodes
-for i = 1:size(comb,1)
-    mask = false(1, prediction_horizon+1);
-    mask(comb(i,:)) = true;
-    cur = 1;
-    X = zeros(1, prediction_horizon);
-    for k = 2:prediction_horizon+1
-        remaining = find(mask);
-        [~, mi] = min(T(cur, remaining));
-        mi = remaining(mi);
-        cur = mi;
-        mask(mi) = false;
-        X(k-1) = cur;
+%% sample combinations
+if prediction_horizon ~= 0 
+    prev_solution = [];
+    if ~isempty(robot.prev_predictions)
+        task_nodes = [preprocessing.tasks.node];
+        task_types = [preprocessing.tasks.type];
+        [~, node_flags] = ismember([robot.prev_predictions.node{:}], task_nodes);
+        [~, task_flags] = ismember([robot.prev_predictions.type{:}], task_types);
+        prev_solution = find(node_flags & task_flags);
+        % populate iterations of the previous solution
+        if ~isempty(prev_solution)
+            new_candidates = setdiff(1:length(preprocessing.tasks), prev_solution);
+            pad = sample_combinations(new_candidates, prediction_horizon - numel(prev_solution), n_prev_solution);
+            prev_solution = [repmat(prev_solution, n_prev_solution, 1) pad];
+        end
     end
+    population = sample_combinations(1:length(all_nodes)-1, prediction_horizon, n_population - size(prev_solution, 1));
+    population = [population; prev_solution];
+
+    % iterate through the combinations and order the nodes
+    for i = 1:size(population,1)
+        mask = false(1, prediction_horizon+1);
+        mask(population(i,:)) = true;
+        cur = 1;
+        X = zeros(1, prediction_horizon);
+        for k = 2:prediction_horizon+1
+            remaining = find(mask);
+            [~, mi] = min(T(cur, remaining));
+            mi = remaining(mi);
+            cur = mi;
+            mask(mi) = false;
+            X(k-1) = cur;
+        end
+        population(i,:) = X;
+    end
+    
+    % construct ga optimizer
+    ga_options = optimoptions('ga', ... 
+                               'PlotFcn', {'gaplotbestf', 'gaplotbestindiv'}, ...
+                               'PopulationSize', n_population, ...
+                               'InitialPopulationMatrix', population, ...
+                               'MaxGenerations', max_iter, ...
+                               'EliteCount', elite_count, ...
+                               'Display', 'none');
+    lb = ones(1, prediction_horizon);
+    ub = length(preprocessing.tasks) * ones(1, prediction_horizon);
+    [x, fval, ~, trials, pop, scores] = ga(@fitness, ...
+                                            prediction_horizon, ...
+                                            [], [], [], [], ...
+                                            lb, ub, ...
+                                            [], ...
+                                            1:prediction_horizon, ...
+                                            ga_options);
+    fprintf("   ga generations: %d | funccount: %d\n", trials.generations, trials.funccount);
 end
 
 % get the best result
