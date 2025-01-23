@@ -29,6 +29,12 @@ function output = sample_combinations(array, k, numSamples)
     
     if totalCombinations <= numSamples
         output = nchoosek(array, k);
+        % pad if necessary
+        if size(output, 1) < numSamples
+            n_diff = numSamples - size(output, 1);
+            output = [output;
+                      repmat(output(1,:), n_diff, 1)];
+        end
         return;
     end
     sampleIndices = round(linspace(0, totalCombinations - 1, numSamples));
