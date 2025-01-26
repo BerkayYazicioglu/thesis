@@ -7,9 +7,8 @@ charge_per_s: 0.1
 color: black
 policy:
     preprocessing: closest
-    num_tasks: 25
-    optimizer: random
-    optimizer: brute_force
+    num_tasks: 100
+    optimizer: milp
     control_horizon: 1
     prediction_horizon: 10
 capabilities:

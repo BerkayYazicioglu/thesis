@@ -25,7 +25,7 @@ q_inits = {{1,1}, ...
            {1,50}};
 
 repetitions = 3;
-experiment_name = "dataset_4";
+experiment_name = "dataset_1";
 
 
 %% Get config

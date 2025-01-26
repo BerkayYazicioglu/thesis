@@ -1,14 +1,10 @@
-function single_area_analysis(result_path, gui, ~)
+function single_distance_analysis(mission, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
     % ===========================
-    
-    panel = gui.RightPanel;
-    mission = load(result_path +  ...
-                   gui.dataset_select.Value + "\" + ...
-                   gui.mission_select.Value + "\mission.mat").mission;
 
+    panel = gui.RightPanel;
     gui.single_plot_options.Items = "none";
     gui.single_plot_options.Value = "none";
     
@@ -16,17 +12,14 @@ function single_area_analysis(result_path, gui, ~)
     delete(panel.Children);
     ax = axes(panel);
     hold(ax, 'on');
-
-    da = (mission.world.X(1,2) - mission.world.X(1,1)) * ...
-         (mission.world.Y(2,1) - mission.world.Y(1,1));
     % individual robots
     for i = 1:length(mission.robots)
-        plot(ax, mission.robots(i).history.Time, mission.robots(i).history.mapped_area * da);
+        plot(ax, mission.robots(i).history.Time, mission.robots(i).history.distance);
     end
     % combined
-    combined = mission.robots(1).history(:, "mapped_area");
+    combined = mission.robots(1).history(:, "distance");
     for i = 2:length(mission.robots)
-        combined = outerjoin(combined, mission.robots(i).history(:, "mapped_area"), ...
+        combined = outerjoin(combined, mission.robots(i).history(:, "distance"), ...
                             'Keys', 'Time', ...
                             'MergeKeys', true, ...
                             'Type', 'full');
@@ -34,9 +27,10 @@ function single_area_analysis(result_path, gui, ~)
     combined = sortrows(combined, 'Time');
     if length(mission.robots) > 1
         % plot combined
-        combined = fillmissing(combined, 'previous', 'DataVariables', @isnumeric);
-        combined.total = sum(table2array(combined), 2);
-        plot(ax, combined.Time, combined.total * da);
+        combined = fillmissing(timetable2table(combined), ...
+            'previous', 'DataVariables', @isnumeric);
+        combined.total = sum(table2array(combined(:,2:end)), 2);
+        plot(ax, combined.Time, combined.total);
         legend(ax, {mission.robots.id "total"}, "Location", "best");
     else
         legend(ax, {mission.robots.id}, "Location", "best");
@@ -49,8 +43,8 @@ function single_area_analysis(result_path, gui, ~)
     xtickangle(ax, 90);
     
     xlabel(ax, 'time (hh:mm)');
-    ylabel(ax, 'm^2', "Rotation", 0);
-    title(ax, "mapped area", 'Interpreter', 'none');
+    ylabel(ax, 'm', "Rotation", 0);
+    title(ax, "distance covered", 'Interpreter', 'none');
 
     grid(ax, 'on');
     hold(ax, 'off');

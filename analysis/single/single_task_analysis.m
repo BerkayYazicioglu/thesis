@@ -1,4 +1,4 @@
-function single_task_analysis(result_path, gui, robot_id)
+function single_task_analysis(mission, gui, robot_id)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
@@ -9,9 +9,6 @@ function single_task_analysis(result_path, gui, robot_id)
     % ===========================
     
     panel = gui.RightPanel;
-    mission = load(result_path +  ...
-                   gui.dataset_select.Value + "\" + ...
-                   gui.mission_select.Value + "\mission.mat").mission;
 
     if nargin == 2
         % need to construct the options

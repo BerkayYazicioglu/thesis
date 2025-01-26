@@ -1,4 +1,4 @@
-function single_victim_analysis(result_path, gui, ~)
+function single_victim_analysis(mission, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
@@ -8,10 +8,6 @@ function single_victim_analysis(result_path, gui, ~)
     % ===========================
     
     panel = gui.RightPanel;
-    mission = load(result_path +  ...
-                   gui.dataset_select.Value + "\" + ...
-                   gui.mission_select.Value + "\mission.mat").mission;
-
     gui.single_plot_options.Items = "none";
     gui.single_plot_options.Value = "none";
 
