@@ -25,7 +25,7 @@ q_inits = {{1,1}, ...
            {1,50}};
 
 repetitions = 3;
-experiment_name = "dataset_4";
+experiment_name = "ga_test";
 
 
 %% Get config
@@ -58,6 +58,10 @@ for i = 1:length(q_inits)
     settings.mission.q_init = q_inits{i};
     for ii = 1:repetitions
         disp('experiment: ' + string(ii+repetitions*(i-1)));
+
+        % if ii+repetitions*(i-1) < 14
+        %     continue
+        % end
 
         world = World(settings.world);
         mission = Mission(settings.mission, world);
