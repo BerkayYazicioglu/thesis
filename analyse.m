@@ -92,7 +92,7 @@ end
 
 %% 
 function switch_callback(app, event)
-    global gui result_path missions
+    global gui missions
     if gui.type_switch.Value == "multi"
 
 
