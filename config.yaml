@@ -20,7 +20,7 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '15:00:00'
+    t_end: '05:00:00'
     PI_model: PI_model.fis
     prediction_errors: false
     coordination_radius: 3
@@ -35,20 +35,20 @@ mission:
             pi_init: PI >= 0.1
             pi_complete: ismember(node, robot.detector.measurements.nodes)
     mcdm:
-        t: 0.4
-        m: 0.5
-        s: 0.7
-        mt: 0.6
-        st: 0.9
-        ms: 0.8
-        mst: 1
+        t: 1
+        m: 4
+        s: 8
+        mt: 6
+        st: 10
+        ms: 0
+        mst: 10
     charger:
         id: charger
         max_step: 0.5
         speed: 0.1
         color: white
         policy: 
-            optimizer: center_of_mass
+            optimizer: static
             control_horizon: 10
             task_proximity: 3
     robots:

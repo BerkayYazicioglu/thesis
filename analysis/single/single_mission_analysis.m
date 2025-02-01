@@ -1,4 +1,4 @@
-function single_mission_analysis(result_path, gui, robot_id)
+function single_mission_analysis(mission, gui, robot_id)
 
     % ========= params ==========
     markers = dictionary("victim", "diamond", ...
@@ -20,9 +20,6 @@ function single_mission_analysis(result_path, gui, robot_id)
     % ==========================+
 
     panel = gui.RightPanel;
-    mission = load(result_path +  ...
-                   gui.dataset_select.Value + "\" + ...
-                   gui.mission_select.Value + "\mission.mat").mission;
 
     global t
     t = mission.time * gui.range_select.Value(2) / 100;

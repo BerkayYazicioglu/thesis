@@ -21,15 +21,14 @@ if isempty(tasks)
     return;
 end
 
-if robot.policy.preprocessing == "closest"
-    task_distances = vecnorm(robot.world.get_coordinates(robot.node) - ...
-                             robot.world.get_coordinates([tasks.node]), 2, 2);
-elseif robot.policy.preprocessing == "shortest_path"
-    task_distances = distance_matrix(robot, [tasks.node] , 1);
-end
+D = distance_matrix(robot, [tasks.node] , 1);
+T = seconds(D./robot.speed) + robot.time;
+E = robot.energy - D * robot.energy_per_m;
 
-[~, idx] = sort(task_distances);
+[~, idx] = sort(D);
 tasks = tasks(idx);
+T = T(idx);
+E = E(idx);
 
 % poll through tasks, predict and populate num_tasks amount of valid
 % tasks for preprocessing
@@ -37,12 +36,17 @@ idx = 1;
 for i = 1:length(tasks)
     [outcomes, de, dt] = tasks(i).predict(robot);
     if ~isempty(outcomes)
-        outcomes.task_idx = i * ones(height(outcomes),1);
+        constraints = preprocess_constraints(robot, tasks(i));
+        % check if the constraint is satisfied as the first selection
+        if ~check_constraints(constraints, T(i) + dt, E(i) - de)
+            continue
+        end
+        outcomes.task_idx = idx * ones(height(outcomes),1);
         output.tasks(idx) = tasks(i);
         output.dt(idx) = dt;
         output.de(idx) = de;
         output.outcomes = [output.outcomes; outcomes];
-        output.constraints{idx} = preprocess_constraints(robot, tasks(i));
+        output.constraints{idx} = constraints;
         idx = idx + 1;
     end
     if idx > num_tasks

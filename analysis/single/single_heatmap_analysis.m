@@ -1,4 +1,4 @@
-function single_heatmap_analysis(result_path, gui, robot_id)
+function single_heatmap_analysis(mission, gui, robot_id)
 
     % ========= params ==========
     markers = dictionary("victim", "diamond", ...
@@ -11,10 +11,7 @@ function single_heatmap_analysis(result_path, gui, robot_id)
     % ===========================
     
     panel = gui.RightPanel;
-    mission = load(result_path +  ...
-                   gui.dataset_select.Value + "\" + ...
-                   gui.mission_select.Value + "\mission.mat").mission;
-
+    
     if nargin == 2
         % need to construct the options
         gui.single_plot_options.Items = ["all" mission.robots.id];
