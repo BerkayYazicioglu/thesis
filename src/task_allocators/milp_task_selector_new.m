@@ -123,12 +123,14 @@ for i = 1:n
 end
 
 %% Run gurobi
-params.outputflag = 1; % Display Gurobi output
+params.outputflag = 0; % Display Gurobi output
 result = gurobi(model, params);
 
 if ~strcmp(result.status, 'OPTIMAL')
     error('Optimization was not successful. Status: %s\n', result.status);
 end
+
+disp("milp task selector s: " + result.runtime);
 
 x = result.x;
 selected_sets = sets(find(x(S)), :);

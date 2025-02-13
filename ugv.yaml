@@ -8,7 +8,7 @@ color: black
 policy:
     preprocessing: closest
     num_tasks: 100
-    optimizer: ga
+    optimizer: milp
     control_horizon: 1
     prediction_horizon: 10
 capabilities:
@@ -30,5 +30,5 @@ capabilities:
         d_energy: 3
         features: [terrain, destruction, population]
         max_range: 7
-        arc: 90
-        angles: [0, 45, 90, 135, 180, 225, 270, 315]
+        arc: 120
+        angles: [0, 90, 180, 270]

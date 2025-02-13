@@ -6,6 +6,7 @@ clc
 clear 
 close
 
+addpath("C:\gurobi1201\win64\matlab")
 addpath("src")
 addpath("src/utils")
 addpath("src/constraints")

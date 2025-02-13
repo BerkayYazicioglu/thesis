@@ -17,10 +17,7 @@ if isempty(preprocessing.tasks)
     return
 end
 
-pp = milp_task_selector(robot, preprocessing);
-
-% employ ga to solve the ordering problem
-%output = ga_task_allocator(robot, pp);
+pp = milp_task_selector_new(robot, preprocessing);
 
 cache = table({}, {}, {}, [], {}, {}, {}, {}, ...
     'VariableNames', {'sets', 'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
@@ -43,12 +40,12 @@ n = height(sets) + 1;
 all_nodes = [robot.node preprocessing.tasks(sets.task_idx).node];
 D = distance_matrix(robot, all_nodes, 2);
 dt = [0 seconds(preprocessing.dt(sets.task_idx))];
-T = D./robot.speed + repmat(dt', 1, n);
+T = D./robot.speed + repmat(dt, n, 1);
 T(find(eye(n))) = 0;
 
 % approximate the maximum time
 t_max = milp_tmax(T); 
-T_trans = 1 - min(1, T ./ t_max);
+T_trans = min(1, T ./ t_max);
 
 % calculate wij for each candidate i
 keys = robot.mission.mcdm.key;
@@ -59,6 +56,7 @@ mcdm = dictionary('t', robot.mission.mcdm.weight(keys == 't'), ...
     'st', robot.mission.mcdm.weight(keys == 'st'));
 w = zeros(n, 3);
 a = zeros(n, 1);
+a_types = string.empty;
 % wi1 -> mcdm(t)
 % wi2 -> mcdm(t max(m s))
 % wi3 -> mcdm(max(m s))
@@ -67,6 +65,7 @@ for i = 2:n
     flags = preprocessing.outcomes.task_idx == set.task_idx & ...
             preprocessing.outcomes.actions == set.actions;
     a(i) = sum(preprocessing.outcomes.values(flags));
+    a_types(i) = pp.tasks(set.task_idx).type;
     wi2 = 0;
     wi3 = 0;
     if pp.tasks(set.task_idx).type == "map"
@@ -111,16 +110,7 @@ for j = 1:n
     T(j) = numel(model.varnames);
 end
 
-% Define P_i (Integer Rank Variable: Position of candidate i in sequence)
-P = zeros(n, 1);
-for i = 1:n
-    var_name = sprintf('P_%d', i);
-    model.vtype = [model.vtype 'I']; % Integer variable
-    model.varnames{end+1} = var_name;
-    P(i) = numel(model.varnames);
-end
-
-% % Utility Variables (U_j)
+% Utility Variables (U_j)
 U = zeros(n, 1);
 for j = 1:n
     var_name = sprintf('U_%d', j);
@@ -149,13 +139,10 @@ model.ub(X(:)) = 1;
 
 % Bounds for Continuous Variables
 model.lb(T(:)) = 0; % Execution times are non-negative
-% model.ub(T(:)) = 20; % Execution times are non-negative
-
+model.ub(T(:)) = 1;
 model.lb(T(1)) = 0;
 model.ub(T(1)) = 0;
 
-model.lb(P(:)) = 1;
-model.ub(P(:)) = n;
 model.lb(U(:)) = 0;  % U_j must be non-negative
 model.ub(U(:)) = inf; % No upper bound on U_j
 model.lb(delta(:)) = 0; % Binary variable lower bound
@@ -215,73 +202,79 @@ A = [A; row];
 rhs = [rhs; 0];
 sense = [sense; '='];
 
-% Tj - Ti = Tij
-for j = 1:n
-    for i = 1:n
-        model.genconind(end+1).binvar = X(i, j);  % Binary variable X(i,j)
-        model.genconind(end).binval = 1;  % Activate only when X(i,j) = 1
-        model.genconind(end).a = zeros(1, num_vars);
-        model.genconind(end).a(T(j)) = 1;  
-        model.genconind(end).a(T(i)) = -1;
-        model.genconind(end).rhs = T_trans(i, j); % Transition time value
-        model.genconind(end).sense = '='; % Enforce equality
-    end
-end
-
-% Ensure correct order: If X(i,j) = 1, then P_j = P_i + 1
+% Tj - Ti = T_trans(i,j) if X(i,j)=1
+M = 2;  % Since T ∈ [0,1] and T_trans(i,j) < 1
 for i = 1:n
     for j = 1:n
-        model.genconind(end+1).binvar = X(i, j);  % Binary variable
-        model.genconind(end).binval = 1;  % Activate when delta_j = 1
-        model.genconind(end).a = zeros(1, num_vars);
-        model.genconind(end).a(P(j)) = 1;  
-        model.genconind(end).a(P(i)) = -1;
-        model.genconind(end).rhs = 1;  % Right-hand side
-        model.genconind(end).sense = '=';  % Enforce equation
+        % Tj - Ti >= T_trans(i,j) - M * (1 - X(i,j))
+        row = zeros(1, num_vars);
+        row(T(j)) = 1;       
+        row(T(i)) = -1;      
+        row(X(i,j)) = -M; 
+        A = [A; row];
+        rhs = [rhs; T_trans(i,j) - M];
+        sense = [sense; '>'];
+
+        % Tj - Ti <= T_trans(i,j) + M * (1 - X(i,j))
+        row = zeros(1, num_vars);
+        row(T(j)) = 1;
+        row(T(i)) = -1;
+        row(X(i,j)) = M;
+        A = [A; row];
+        rhs = [rhs; T_trans(i,j) + M];
+        sense = [sense; '<'];
     end
 end
-row = zeros(1, num_vars);
-row(P(1)) = 1;
-A = [A; row];
-rhs = [rhs; 1];
-sense = [sense; '='];
+% for j = 1:n
+%     for i = 1:n
+%         model.genconind(end+1).binvar = X(i, j);  % Binary variable X(i,j)
+%         model.genconind(end).binval = 1;  % Activate only when X(i,j) = 1
+%         model.genconind(end).a = zeros(1, num_vars);
+%         model.genconind(end).a(T(j)) = 1;  
+%         model.genconind(end).a(T(i)) = -1;
+%         model.genconind(end).rhs = T_trans(i, j); % Transition time value
+%         model.genconind(end).sense = '='; % Enforce equality
+%     end
+% end
 
 for j = 1:n
-    % Case 1: If delta_j = 1, enforce U_j = w_j1 * (T_j - a_j) + w_j2 * a_j
+    % Case 1: If delta_j = 1, enforce U_j = w_j1 * ((1 - T_j) - a_j) + w_j2 * a_j
+    % U_j + w_j1 * Tj = w_j1 - wj_1 * a_j + w_j2 * a_j
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
     model.genconind(end).a(U(j)) = 1;  
     model.genconind(end).a(T(j)) = -w(j,1);
-    model.genconind(end).rhs = -w(j,1) * a(j) + w(j,2) * a(j);  % Right-hand side
+    model.genconind(end).rhs = w(j, 1) - w(j,1) * a(j) + w(j,2) * a(j);  % Right-hand side
     model.genconind(end).sense = '=';  % Enforce equation
 end
 for j = 1:n
-    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - T_j) + w_j2 * T_j
+    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - (1 - T_j)) + w_j2 * (1 - T_j)
+    % U_j - w_j3 * T_j + w_j2 * T_j = w_j3 * a_j - w_j3 + w_j2
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 0
     model.genconind(end).a = zeros(1, num_vars);
     model.genconind(end).a(U(j)) = 1;  
-    model.genconind(end).a(T(j)) = w(j,3) - w(j,2);
-    model.genconind(end).rhs = w(j,3) * a(j);  % Right-hand side
+    model.genconind(end).a(T(j)) = -w(j,3) + w(j,2);
+    model.genconind(end).rhs = w(j,3) * a(j) - w(j,3) + w(j,2);  % Right-hand side
     model.genconind(end).sense = '=';  % Enforce equation
 end
 
 for j = 1:n
-    % lambdaj = 1: Tj >= aj
+    % lambdaj = 1: 1 - Tj >= aj
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(T(j)) = 1;  
-    model.genconind(end).rhs = a(j);  % Right-hand side
+    model.genconind(end).a(T(j)) = -1;  
+    model.genconind(end).rhs = a(j) - 1;  % Right-hand side
     model.genconind(end).sense = '>';  % Enforces T_j >= a_j when delta_j = 1
 
-    % lambdaj = 0: aj >= Tj
+    % lambdaj = 0: aj >= 1 - Tj
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(T(j)) = 1;  
-    model.genconind(end).rhs = a(j);  % Right-hand side
+    model.genconind(end).a(T(j)) = -1;  
+    model.genconind(end).rhs = a(j) - 1;  % Right-hand side
     model.genconind(end).sense = '<'; % Enforces T_j < a_j when delta_j = 0
 end
 
@@ -295,24 +288,46 @@ model.modelsense = 'max';
 
 
 %% Solve the Model with Gurobi
-params.outputflag = 1; % Display Gurobi output
+params.outputflag = 0; % Display Gurobi output
+%params.MIPFocus = 1; % Focus on finding feasible solutions faster
+
 result = gurobi(model, params);
 
-% ==========================
-% Display Results
-% ==========================
+disp("milp task allocator s: " + result.runtime);
+
 if strcmp(result.status, 'OPTIMAL')
-    fprintf('Optimized Total Execution Time: %.4f\n', result.objval);
-    X_opt = reshape(result.x(X(:)), [n, n]);
-    fprintf('Optimized Transition Matrix X:\n');
-    disp(X_opt);
-    fprintf('Utility Values (U_j):\n');
-    for j = 1:n
-        fprintf('U_%d: %.4f\n', j, result.x(U(j)));
+    X_opt = reshape(result.x(X(:)), [n n]);
+    P = find_ordering(X_opt);
+    x = P(2:end) - 1;
+
+    num_control = min(length(x), robot.policy.control_horizon);
+    % fill in cache 
+    for i = 1:length(result.pool)
+        u_pool = result.pool(i).objval;
+        P_pool = find_ordering(reshape(result.pool(i).xn(X(:)), [n n]));
+        u_map = a(P_pool);
+        u_map(a_types ~= "map") = 0;
+        u_search = a(P_pool);
+        u_search(a_types ~= "search") = 0;
+        T_pool = result.pool(i).xn(T) * t_max + robot.time;
+        cache(end+1,:) = {P_pool(2:end)-1, ... % sets
+                         sets.task_idx(P_pool(2:end)-1), ... % tasks
+                         sets.actions(P_pool(2:end)-1), ... % actions
+                         u_pool, ... % u
+                         u_map(2:end), ... % u_map
+                         u_search(2:end), ... % u_search
+                         T_pool, ... % absolute t
+                         100 * ones(length(P_pool)-1, 1) ... % e (TODO: calculate)
+                        };
     end
-    for j = 1:n
-        fprintf('rank_%d: T_%d: %.4f\n', result.x(P(j)), j, result.x(T(j)));
-    end
+    cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
+
+    output.tasks = pp.tasks(x(1:num_control));
+    output.actions = sets.actions(x(1:num_control));
+    output.charge_flag = false;
+    output.u = result.objval;
+    output.cache = cache;
+    output.t_max = t_max;
 else
-    fprintf('Optimization was not successful. Status: %s\n', result.status);
+    error('Optimization was not successful. Status: %s\n', result.status);
 end
