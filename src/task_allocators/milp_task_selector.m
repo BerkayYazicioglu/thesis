@@ -1,4 +1,4 @@
-function pp = milp_task_selector(robot, preprocessing)
+function [pp, task_idx] = milp_task_selector(robot, preprocessing)
 % preprocessing -> tasks, de, dt, outcomes (table with columns <nodes>, <values>, <actions>, <task_idx>)
 %
 % tasks -> ordered allocted tasks
@@ -8,11 +8,12 @@ function pp = milp_task_selector(robot, preprocessing)
 % cache -> optimization cache
 
 % ============================== params ===================================
-allowed_intersections = 1;
+max_work_limit = 5;
 % =========================================================================
 
 if isempty(preprocessing.tasks)
     pp = preprocessing;
+    task_idx = 1:length(pp.tasks);
     return
 end
 
@@ -31,18 +32,107 @@ D = distance_matrix(robot, all_nodes, 1);
 T = seconds(D./robot.speed);
 t_max = max(T + [seconds(0) preprocessing.dt]); 
 
-% objective function
-f = sparse(1, n + height(preprocessing.outcomes)); 
-% (relaxed) element coverage constraint
-A1 = sparse(m, n + height(preprocessing.outcomes));
-b1 = allowed_intersections * ones(m, 1);
-% set selection implication (forward)
-A2 = sparse(height(preprocessing.outcomes), n + height(preprocessing.outcomes));
-b2 = zeros(height(preprocessing.outcomes), 1);
-% set selection implication (backward)
-A3 = sparse(height(preprocessing.outcomes), n + height(preprocessing.outcomes));
-b3 = zeros(height(preprocessing.outcomes), 1);
+% construct gurobi model
+model.A = sparse([]);
+model.obj = [];
+model.rhs = [];
+model.sense = '';
+model.vtype = '';
+model.modelsense = 'max';
+model.varnames = {};
 
+%% Decision Variables
+% Sij (set selection)
+S = zeros(n, 1);
+for i = 1:n
+    var_name = sprintf('S_%d', i);
+    model.vtype = [model.vtype 'B']; % Binary variable
+    model.varnames{end+1} = var_name;
+    S(i) = numel(model.varnames); % Store index
+end
+
+% Ej (element selection)
+E = zeros(height(elements), 1);
+for j = 1: height(elements)
+    var_name = sprintf('E_%d', j);
+    model.vtype = [model.vtype 'B']; % Binary variable
+    model.varnames{end+1} = var_name;
+    E(j) = numel(model.varnames); % Store index
+end
+
+%% Set Variable Bounds
+num_vars = numel(model.varnames);
+model.lb = zeros(num_vars, 1);
+model.ub = ones(num_vars, 1);
+
+%% Constructing model.A (Constraints)
+A = sparse(2 * m + 3 * n + 1, num_vars);
+rhs = [];
+sense = '';
+row_idx = 1;
+
+% select at most prediction horizon number of sets
+A(row_idx, S(:)) = 1;
+row_idx = row_idx + 1;
+rhs = [rhs; robot.policy.prediction_horizon];
+sense = [sense; '<'];
+% select at most one set per task
+for j = 1:n
+    flags = sets.task_idx == sets.task_idx(j);
+    A(row_idx, S(flags)) = 1;
+    row_idx = row_idx + 1;
+    rhs = [rhs; 1];
+    sense = [sense; '<'];
+end
+% Sij -> E(Sij)
+M = max(elements.GroupCount) + 1;
+for j = 1:n
+    flags = preprocessing.outcomes.task_idx == sets.task_idx(j) & ...
+            preprocessing.outcomes.actions == sets.actions(j);
+    flags = ismember(elements.nodes, preprocessing.outcomes.nodes(flags)) & ...
+            ismember(elements.task_types, preprocessing.outcomes.task_types(flags));
+
+    % sum(E(flags)) >= |E(Sij)| - M(1 - Sj);
+    A(row_idx, E(flags)) = 1;
+    A(row_idx, S(j)) = -M;
+    row_idx = row_idx + 1;
+    rhs = [rhs; sets.GroupCount(j) - M];
+    sense = [sense; '>'];
+
+    % sum(E(flags)) <= |E(Sij)| + M(1 - Sj);
+    A(row_idx, E(flags)) = 1;
+    A(row_idx, S(j)) = M;
+    row_idx = row_idx + 1;
+    rhs = [rhs; sets.GroupCount(j) + M];
+    sense = [sense; '<'];
+end
+% ej -> {exactly one S | ej in S}
+M = height(sets) + 1;
+for j = 1:m
+    flags = elements.nodes(j) == preprocessing.outcomes.nodes & ...
+            elements.task_types(j) == preprocessing.outcomes.task_types;
+    flags = ismember(sets.task_idx, preprocessing.outcomes.task_idx(flags)) & ...
+            ismember(sets.actions, preprocessing.outcomes.actions(flags));
+    % sum({S | ej in S}) >= 1  - M(1 - Ej)
+    A(row_idx, S(flags)) = 1;
+    A(row_idx, E(j)) = -M;
+    row_idx = row_idx + 1;
+    rhs = [rhs; 1 - M];
+    sense = [sense; '>'];
+
+    % sum({S | ej in S}) <= 1  + M(1 - Ej)
+    A(row_idx, S(flags)) = 1;
+    A(row_idx, E(j)) = M;
+    row_idx = row_idx + 1;
+    rhs = [rhs; 1 + M];
+    sense = [sense; '<'];
+end
+
+% objective function
+model.A = A;
+model.rhs = rhs;
+model.sense = sense;
+model.obj = zeros(1, num_vars);
 for i = 1:n
     % objective function
     set = sets(i, :);
@@ -51,57 +141,30 @@ for i = 1:n
             preprocessing.outcomes.actions == set.actions;
     U(preprocessing.tasks(set.task_idx).type) = sum(preprocessing.outcomes.values(flags));
     t = T(1, set.task_idx+1) + preprocessing.dt(set.task_idx);
-    f(i) = -mcdm(robot.mission.mcdm, ...
-                 1-min(t, t_max)/t_max, U("map"), U("search")); 
-end
-for j = 1:m
-    % constraint 1
-    % include 1 for all y_ij corresponding to the same ej
-    flags = preprocessing.outcomes.nodes == elements.nodes(j) & ...
-            preprocessing.outcomes.task_types == elements.task_types(j);
-    A1j = sparse(1, n + height(preprocessing.outcomes)); 
-    A1j(n+1:end) = flags;
-    A1(j,:) = A1j;
+    model.obj(S(i)) = mcdm(robot.mission.mcdm, ...
+                            1-min(t, t_max)/t_max, U("map"), U("search")); 
 end
 
-for j = 1:height(preprocessing.outcomes)
-    row = preprocessing.outcomes(j, :);
-    % constraint 2
-    % include -1 for all x_i corresponding to sets containing ej, 1 for yij
-    flags = preprocessing.outcomes.nodes == row.nodes & ...
-            preprocessing.outcomes.task_types == row.task_types;
-    [~, flags] = ismember(preprocessing.outcomes(flags, {'task_idx','actions'}), ...
-                          sets(:, {'task_idx','actions'}), 'rows');
-    A2j = sparse(1, n + height(preprocessing.outcomes));
-    A2j(flags) = -1;
-    A2j(n + j) = 1;
-    A2(j, :) = A2j;
+%% Run gurobi
+params.outputflag = 1; % Display Gurobi output
+params.WorkLimit = max_work_limit;
+params.MIPFocus = 1; 
+result = gurobi(model, params);
 
-    % constraint 3
-    % include 1 for the corresponding x_i, -1 for the y_ij index
-    A3j = sparse(1, n + height(preprocessing.outcomes));
-    flags = find(sets.task_idx == row.task_idx & sets.actions == row.actions);
-    A3j(flags) = 1;
-    A3j(n + j) = -1;
-    A3(j, :) = A3j;
+% disp("milp task selector s: " + result.runtime);
+
+x = result.x;
+selected_sets = sets(find(x(S)), :);
+flags = false(height(preprocessing.outcomes), 1);
+for i = 1:height(selected_sets)
+    flags = flags | ...
+           (selected_sets.task_idx(i) == preprocessing.outcomes.task_idx & ...
+            selected_sets.actions(i) == preprocessing.outcomes.actions);
 end
-% combine constraints
-A = [A1; A2];
-b = [b1; b2];
-% variable bounds
-lb = zeros(length(f), 1);
-ub = ones(length(f), 1);
-
-% solve milp
-options = optimoptions('intlinprog', ...
-                       'Display', 'none', ...
-                       'AbsoluteGapTolerance', 0);
-[x, fval, ~, result] = intlinprog(f, 1:length(f), A, b, A3, b3, lb, ub, options);
-x = round(x);
-selected_sets = sets(find(x(1:n)), :);
-
 selected_tasks = unique(selected_sets.task_idx);
-pp.outcomes = preprocessing.outcomes(find(x(n + 1:end)), :);
+task_idx = selected_tasks;
+
+pp.outcomes = preprocessing.outcomes(flags, :);
 pp.outcomes.task_idx = arrayfun(@(x) find(selected_tasks == x), pp.outcomes.task_idx);
 pp.tasks = preprocessing.tasks(selected_tasks);
 pp.dt = preprocessing.dt(selected_tasks);
@@ -115,6 +178,6 @@ fprintf('ej : %d | yij: %d | selected: %d | init tasks/action: %d | final task/a
 loc = robot.world.get_coordinates([preprocessing.tasks(selected_sets.task_idx).node]);
 selected_sets.X = loc(:,1) * 5;
 selected_sets.Y = loc(:,2) * 5;
-selected_sets.u = -nonzeros(f(find(x(1:n))));
+selected_sets.u = nonzeros(model.obj(find(x(S))));
 
 end

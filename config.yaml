@@ -22,6 +22,7 @@ gui:
 mission:
     t_end: '05:00:00'
     PI_model: PI_model.fis
+    milp_solver: milp_v2
     prediction_errors: false
     coordination_radius: 3
     q_init: [1,1]
@@ -37,11 +38,11 @@ mission:
     mcdm:
         t: 1
         m: 4
-        s: 8
-        mt: 6
-        st: 10
+        s: 15
+        mt: 8
+        st: 20
         ms: 0
-        mst: 10
+        mst: 25
     charger:
         id: charger
         max_step: 0.5

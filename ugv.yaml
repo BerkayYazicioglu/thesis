@@ -8,7 +8,7 @@ color: black
 policy:
     preprocessing: closest
     num_tasks: 100
-    optimizer: milp
+    optimizer: milp_lns
     control_horizon: 1
     prediction_horizon: 10
 capabilities:
@@ -16,7 +16,7 @@ capabilities:
         type: search
         capability: 0.5
         model: search_capability.mat
-        t_s: '05:00'
+        t_s: '03:00'
         d_energy: 5
         features: [victim]
         max_range: 3

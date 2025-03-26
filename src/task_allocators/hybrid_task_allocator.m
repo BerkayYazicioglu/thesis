@@ -17,7 +17,7 @@ if isempty(preprocessing.tasks)
     return
 end
 
-pp = milp_task_selector_new(robot, preprocessing);
+pp = milp_task_selector(robot, preprocessing);
 % employ ga to solve the ordering problem
 output = ga_task_allocator(robot, pp);
 end
