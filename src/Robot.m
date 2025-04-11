@@ -33,6 +33,7 @@ classdef Robot < handle
         return_schedule timetable;
         cache table; 
         prev_predictions table;
+        considered_tasks string = string.empty;
         msg string = "";
     end
     
@@ -248,6 +249,7 @@ classdef Robot < handle
             obj.cache = opt_results.cache; 
             opt_results.robot = obj;
             obj.control_step = 0;
+            obj.considered_tasks = [pp.tasks(opt_results.pp_task_idx).node];
         end
 
 
@@ -374,6 +376,14 @@ classdef Robot < handle
                                 obj.world.Y(str2double(obj.node)),...
                                 'Color', 'red', ...
                                 'LineWidth', 1.5);
+            
+            % task selector handles
+            handles.tasks = scatter(parent_handle, ...
+                                    [], [], 10, ...
+                                    'MarkerFaceAlpha', 0.8, ...
+                                    'MarkerFaceColor', obj.color, ...
+                                    'MarkerEdgeColor', 'red');
+
             % capability handles
             for i = 1:length(obj.capabilities)
                 capability = obj.capabilities(i);
@@ -409,6 +419,10 @@ classdef Robot < handle
             set(handles.path, ...
                 'XData', obj.world.X(str2double(obj.schedule.node)), ...
                 'YData', obj.world.Y(str2double(obj.schedule.node)));
+            % update considered tasks
+            set(handles.tasks, ...
+                'XData', obj.world.X(str2double(obj.considered_tasks)), ...
+                'YData', obj.world.Y(str2double(obj.considered_tasks)));
         end
     end
 end

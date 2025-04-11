@@ -18,12 +18,11 @@ function single_utility_analysis(mission, gui, ~)
         pp = robot.pp_outputs(history.Time(i));
         if ~pp.charge_flag
             idx = find(pp.u == pp.cache.u, 1, 'first');
-            rel_t = pp.cache.t{idx} - history.Time(i);
-            rel_t = 1 - min(rel_t, pp.t_max) ./ pp.t_max;
+            t_mcdm = pp.cache.t_mcdm{idx};
             u_map = pp.cache.u_map{idx};
             u_search = pp.cache.u_search{idx};
             % calculate partial mcdm output
-            u = mcdm(robot.mission.mcdm, rel_t, u_map, u_search);
+            u = mcdm(robot.mission.mcdm, t_mcdm, u_map, u_search);
             history.partial_u(i) = sum(u(1: min(length(u), robot.policy.control_horizon)));
         end
     end

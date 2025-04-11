@@ -1,46 +1,70 @@
-function single_distance_analysis(result_path, gui, ~)
+function multi_distance_analysis(missions, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
     % ===========================
 
     panel = gui.RightPanel;
-    mission = load(result_path +  ...
-                   gui.dataset_select.Value + "\" + ...
-                   gui.mission_select.Value + "\mission.mat").mission;
-
     gui.single_plot_options.Items = "none";
     gui.single_plot_options.Value = "none";
     
+    experiments = fields(missions);
+    colors = distinguishable_colors(length(experiments), 'white');
     % start creating plots
     delete(panel.Children);
     ax = axes(panel);
-    hold(ax, 'on');
-    % individual robots
-    for i = 1:length(mission.robots)
-        plot(ax, mission.robots(i).history.Time, mission.robots(i).history.distance);
-    end
-    % combined
-    combined = mission.robots(1).history(:, "distance");
-    for i = 2:length(mission.robots)
-        combined = outerjoin(combined, mission.robots(i).history(:, "distance"), ...
-                            'Keys', 'Time', ...
-                            'MergeKeys', true, ...
-                            'Type', 'full');
-    end
-    combined = sortrows(combined, 'Time');
-    if length(mission.robots) > 1
-        % plot combined
-        combined = fillmissing(timetable2table(combined), ...
-            'previous', 'DataVariables', @isnumeric);
-        combined.total = sum(table2array(combined(:,2:end)), 2);
-        plot(ax, combined.Time, combined.total);
-        legend(ax, {mission.robots.id "total"}, "Location", "best");
-    else
-        legend(ax, {mission.robots.id}, "Location", "best");
+
+    for j = 1:length(experiments)
+        M = missions.(experiments{j});
+        data = M(1).robots(1).history(:, 'distance');
+        robots = M(1).robots;
+        for k = 2:length(robots)
+            data = synchronize(data, robots(k).history(:,'distance'), 'union');
+        end
+
+        for k = 2:length(M)
+            robots = M(k).robots;
+            for i = 1:length(robots)
+                data = synchronize(data, robots(i).history(:, 'distance'), 'union'); 
+            end
+        end
+
+        hold(ax, 'on')
+        data = fillmissing(data, 'previous');
+
+        % mean
+        plot(ax, data.Time, mean(data{:, :}, 2), ...
+            'Color', colors(j, :));
+        % max
+        plot(ax, data.Time, max(data{:, :}, [], 2), ...
+            '-', 'Color', [colors(j, :), 0.3]);
+        % min
+        plot(ax, data.Time, min(data{:, :}, [], 2), ...
+            '-', 'Color', [colors(j, :), 0.3]);
+        % region
+        p = patch(ax, [data.Time' fliplr(data.Time')], ...
+            [max(data{:, :}, [], 2)' fliplr(min(data{:, :}, [], 2)')], ...
+            colors(j, :));
+        set(p, 'FaceAlpha', 0.3);
+        set(p, 'EdgeColor', 'none');
+
+        hold(ax, 'off');
     end
 
-    new_ticks = 0:x_label_interval:mission.time;
+    hold(ax, 'on');
+    legend_entries = {};
+    for i = 1:length(experiments)
+        legend_entries{end+1} = scatter(ax, nan, nan, ...
+            'MarkerEdgeColor', colors(i,:), ...
+            'MarkerFaceColor', colors(i,:), ...
+            'Marker', 'square');
+    end
+
+    legend([legend_entries{:}], cellfun(@(x) replace(string(x), '_', ' '), experiments)', ...
+        'Location', 'bestoutside');
+    hold(ax, 'off');
+
+    new_ticks = 0:x_label_interval:max(data.Time);
     new_ticks.Format = 'hh:mm';
     xticks(ax, new_ticks);
     xticklabels(ax, string(new_ticks));
@@ -51,7 +75,6 @@ function single_distance_analysis(result_path, gui, ~)
     title(ax, "distance covered", 'Interpreter', 'none');
 
     grid(ax, 'on');
-    hold(ax, 'off');
 
     % bind silder
     gui.range_select.ValueChangedFcn = @slider_callback;

@@ -1,4 +1,4 @@
-function output = milp_lns(T_trans, E_trans, T_const, E_const, e0, w, a, u)
+function output = milp_lns(T_trans, E_trans, T_const, E_const, e0, w, a, u, tmax)
 
 % =========================================================================
 max_work_limit = 5;
@@ -9,12 +9,12 @@ random_ratio = 0.5;
 % =========================================================================
 cache = table({}, {}, {}, {}, [], ...
     'VariableNames', {'x', 't', 'e', 'u', 'u_total'});
-
+ 
 % create an incumbent solution 
-[model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a);
+[model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a, tmax);
 params.WorkLimit = max_work_limit;
 params.MIPFocus = 1; 
-params.outputflag = 1;
+params.outputflag = 0;
 result = gurobi(model, params);
 if isfield(result, 'pool')
     for i = 1:length(result.pool)
@@ -26,6 +26,7 @@ if isfield(result, 'pool')
                          result.pool(i).objval}];
     end
 else
+    disp('gurobi couldnt find a feasible solution, generating initial conditions');
     result.x = milp_init_cond(T_trans, E_trans, e0, w, a, u);
     result.objval = sum(result.x(variables.W(:)));
     [~, x_idx] = sort(result.x(variables.P(:)));

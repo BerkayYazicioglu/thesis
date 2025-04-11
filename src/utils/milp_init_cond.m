@@ -20,16 +20,17 @@ for i = 1:n-1
     E(idx(i+1)) = E(idx(i)) - E_trans(idx(i), idx(i+1));
 
     j = idx(i+1);
+    tj = sum(X(:,j) .* T_trans(:,j) ./ max(T_trans(:,j)));
     % delta_j=1 => aj <= (1 - Tj)
-    if 1 - T(j) >= a(j)
+    if 1 - tj >= a(j)
         delta(j) = 1;
     end
     % Uj = wj1 (1 - Tj - aj) + wj2 aj if deltaj = 1
     % Uj = wj3 (aj - 1 + Tj) + wj2 (1 -Tj) if deltaj = 0
     if delta(j) == 1
-        U(j) = w(j,1) * (1 - T(j) - a(j)) + w(j,2) * a(j);
+        U(j) = w(j,1) * (1 - tj - a(j)) + w(j,2) * a(j);
     else
-        U(j) = w(j,3) * (a(j) - 1 + T(j)) + w(j,2) * (1 - T(j));
+        U(j) = w(j,3) * (a(j) - 1 + tj) + w(j,2) * (1 - tj);
     end
     P(i+1) = find(idx == i+1); 
 end

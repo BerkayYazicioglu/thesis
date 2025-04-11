@@ -33,6 +33,7 @@ sim_obj = simulation;
 world = World(settings.world);
 mission = Mission(settings.mission, world);
 gui = Gui(settings.gui, sim_obj, mission, world);
+gui.run();
 
 %% Start simulation
 t_total = 0;

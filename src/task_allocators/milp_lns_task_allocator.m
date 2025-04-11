@@ -17,6 +17,7 @@ if isempty(preprocessing.tasks)
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(0);
+    output.pp_task_idx = [];
     return
 end
 
@@ -29,6 +30,7 @@ if isempty(pp.tasks)
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(0);
+    output.pp_task_idx = [];
     return;
 end
 
@@ -39,15 +41,18 @@ n = height(sets) + 1;
 % calculate all distance and travel time pairs
 all_nodes = [robot.node pp.tasks(sets.task_idx).node];
 D = distance_matrix(robot, all_nodes, 2);
-dt = [0 seconds(pp.dt(sets.task_idx))];
-de = [0 pp.de(sets.task_idx)];
+dt = zeros(1, height(sets) + 1);
+de = zeros(1, height(sets) + 1);
+dt(2:end) = seconds(preprocessing.dt(sets.task_idx));
+de(2:end) = preprocessing.de(sets.task_idx);
 T = D./robot.speed + repmat(dt, n, 1);
 E = D * robot.energy_per_m + repmat(de, n, 1);
 T(find(eye(n))) = 0;
 
 % approximate the maximum time
 t_max = milp_tmax(T); 
-T_trans = min(1, T ./ t_max);
+% T_trans = min(1, T ./ t_max);
+T_trans = T;
 T_const = zeros(n, height(preprocessing.constraints{1}));
 E_const = zeros(n, height(preprocessing.constraints{1}));
 
@@ -91,7 +96,8 @@ for i = 2:n
     % constraints
     const = preprocessing.constraints{i-1};
     for k = 1:height(const)
-        T_const(i,k) = seconds(const.Time(k) - robot.time) / t_max; 
+        % T_const(i,k) = seconds(const.Time(k) - robot.time) / t_max; 
+        T_const(i,k) = seconds(const.Time(k) - robot.time);
         E_const(i,k) = const.energy(k);
     end
 end
@@ -104,7 +110,8 @@ milp_output = milp_lns(T_trans, ...
                        robot.energy, ...
                        w, ...
                        a, ...
-                       u);
+                       u, ...
+                       t_max);
 
 
 %% compile results
@@ -113,7 +120,8 @@ for i = 1:height(milp_output.cache)
     len_sol = sum(row.u{1} > 0);
     if len_sol > 0
         x_sol = row.x{1}(2:1+len_sol) - 1;
-        t_sol = robot.time + seconds(row.t{1}(2:1+len_sol) * t_max);
+        % t_sol = robot.time + seconds(row.t{1}(2:1+len_sol) * t_max);
+        t_sol = robot.time + seconds(row.t{1}(2:1+len_sol));
         e_sol = row.e{1}(2:1+len_sol);
         u_sol = row.u{1}(2:1+len_sol);
         tasks_sol = pp_task_idx(sets.task_idx(x_sol));
@@ -144,6 +152,7 @@ if len_sol > 0
     output.u = milp_output.u_total;
     output.cache = cache;
     output.t_max = t_max;
+    output.pp_task_idx = pp_task_idx;
 else
     output.tasks = Task.empty;
     output.actions = string.empty;
@@ -151,6 +160,7 @@ else
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(0);
+    output.pp_task_idx = pp_task_idx;
 end
 
 end

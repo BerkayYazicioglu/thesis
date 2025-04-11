@@ -14,8 +14,8 @@ elite_count = 2;
 n_mut = 2;
 
 % =======================
-cache = table({}, {}, {}, [], {}, {}, {}, {}, ...
-    'VariableNames', {'sets', 'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
+cache = table({}, {}, {}, [], {}, {}, {}, {}, {}, ...
+    'VariableNames', {'sets', 'tasks', 'actions', 'u', 'u_map', 'u_search', 't_mcdm', 't', 'e'});
 flagged = table({}, 'VariableNames', {'sets'});
 
 if isempty(preprocessing.tasks)
@@ -25,6 +25,7 @@ if isempty(preprocessing.tasks)
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(1);
+    output.pp_task_idx = [];
     return;
 end
 
@@ -102,12 +103,13 @@ function u = fitness(x)
             [cache_x, cache_idx] = lcss(cache.sets, prev_x);
             if ~isempty(cache_x)
                 prev_n = length(cache_x);
-                t_ = cache.t{cache_idx}(1:prev_n);
+                %t_ = cache.t{cache_idx}(1:prev_n);
                 u_map = cache.u_map{cache_idx}(1:prev_n);
                 u_search = cache.u_search{cache_idx}(1:prev_n);
+                t_mcdm = cache.t_mcdm{cache_idx}(1:prev_n);
                 % calculate the aggregated utility
                 u = -mcdm(robot.mission.mcdm, ...
-                          1-min(t_, t_max)./t_max, u_map, u_search);
+                          t_mcdm, u_map, u_search);
                 u = sum(u);
             else
                 u = inf;
@@ -122,6 +124,7 @@ function u = fitness(x)
     e_ = robot.energy * ones(1, length(x));
     u_map = zeros(1, length(x));
     u_search = zeros(1, length(x)); 
+    t_mcdm = zeros(1, length(x));
     flag = true; 
     start_n = 1;
     included = false(height(preprocessing.outcomes), 1);
@@ -139,9 +142,10 @@ function u = fitness(x)
         e_(1:prev_n) = cache.e{cache_idx}(1:prev_n);
         u_map(1:prev_n) = cache.u_map{cache_idx}(1:prev_n);
         u_search(1:prev_n) = cache.u_search{cache_idx}(1:prev_n);
+        t_mcdm(1:prev_n) = cache.t_mcdm{cache_idx}(1:prev_n);
         % calculate the aggregated utility
         prev_u = mcdm(robot.mission.mcdm, ...
-                      1-min(t_(1:prev_n), t_max)./t_max, ...
+                      t_mcdm(1:prev_n), ...
                       u_map(1:prev_n), ...
                       u_search(1:prev_n)); 
         u_ = sum(prev_u);
@@ -159,6 +163,8 @@ function u = fitness(x)
         end
         t_(n) = t_(max(1, n-1)) + T(prev_task_idx+1, x(n)+1) + preprocessing.dt(set.task_idx);
         e_(n) = e_(max(1, n-1)) - D(prev_task_idx+1, x(n)+1) * robot.energy_per_m - preprocessing.de(set.task_idx);
+        t_mcdm(n) = 1 - (T(prev_task_idx+1, x(n)+1) + preprocessing.dt(set.task_idx)) / ...
+                        max(T(:, x(n)+1) + preprocessing.dt(set.task_idx));
         % check constraints
         flag = check_constraints(preprocessing.constraints{set.task_idx}, ...
                                  t_(n) + robot.time, ...
@@ -180,7 +186,7 @@ function u = fitness(x)
             U_ = dictionary("map", 0, "search", 0);
             U_(preprocessing.tasks(set.task_idx).type) = sum(preprocessing.outcomes.values(additions));
             u_ = u_ + mcdm(robot.mission.mcdm, ...
-                           1-min(t_(n), t_max)/t_max, ...
+                           t_mcdm(n), ...
                            U_("map"), ...
                            U_("search")); 
             u_map(n) = U_("map");
@@ -196,6 +202,7 @@ function u = fitness(x)
                          u_, ...
                          {u_map(1:n)},...
                          {u_search(1:n)}, ...
+                         {t_mcdm(1:n)}, ...
                          {t_(1:n)}, ...
                          {e_(1:n)}}];
     end
@@ -203,6 +210,7 @@ function u = fitness(x)
 end
 
 %% sample combinations
+x = [];
 if prediction_horizon ~= 0 
     population = zeros(n_population, prediction_horizon);
     % iterate through the combinations and order the nodes
@@ -256,6 +264,7 @@ if isempty(cache)
     output.u = NaN;
     output.cache = cache;
     output.t_max = t_max;
+    output.pp_task_idx = [];
 else
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
     cache.t(:) = cellfun(@(x) x + robot.time, cache.t(:), 'UniformOutput', false); 
@@ -270,6 +279,7 @@ else
     output.u = max_u;
     output.cache = cache;
     output.t_max = t_max;
+    output.pp_task_idx = x;
 end
 
 end

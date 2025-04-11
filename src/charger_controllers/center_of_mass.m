@@ -3,6 +3,8 @@ function output = center_of_mass(charger)
 % center of mass of remaining tasks
 
 goal_passivity = 3;
+w_min = 3;
+w_max = 5;
 
 c = find(~charger.traversability(charger.mission.map.Edges.EndNodes));
 map = charger.mission.map.rmedge(charger.mission.map.Edges.EndNodes(c,1), ...
@@ -39,9 +41,12 @@ end
 % filter candidates that match the valid area
 candidates = candidates(ismember(candidates, valid_area));
 
-% find the unweighted center of mass of tasks
+% find the weighted center of mass of tasks
 locs = charger.world.get_coordinates(task_nodes);
-com = [mean(locs(:,1)) mean(locs(:,2))];
+w = vecnorm(locs - charger.world.get_coordinates(charger.node), 2 ,2);
+w = normalize(w, 1, 'range', [w_min w_max]);
+com = [sum(w .* locs(:,1)) sum(w .* locs(:,2))] / sum(w);
+
 % find the candidate closest to the goal
 candidate_locs = charger.world.get_coordinates(candidates);
 distances = vecnorm((com - candidate_locs)');

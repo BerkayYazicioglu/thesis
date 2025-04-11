@@ -14,10 +14,25 @@ if isempty(preprocessing.tasks)
     output.u = NaN;
     output.cache = table({}, {}, [], {}, {}, {}, {}, 'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
     output.t_max = seconds(0);
+    output.pp_task_idx = [];
     return
 end
 
-pp = milp_task_selector(robot, preprocessing);
+[pp, pp_task_idx] = milp_task_selector(robot, preprocessing);
+
+if isempty(pp.tasks)
+    output.tasks = Task.empty;
+    output.actions = string.empty;
+    output.charge_flag = true;
+    output.u = NaN;
+    output.cache = cache;
+    output.t_max = seconds(0);
+    output.pp_task_idx = [];
+    return;
+end
+
 % employ ga to solve the ordering problem
 output = ga_task_allocator(robot, pp);
+output.pp_task_idx = pp_task_idx;
+
 end

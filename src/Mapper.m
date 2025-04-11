@@ -14,6 +14,7 @@ classdef Mapper < handle
         model sugfis;
 
         FoV cell % area of effect per angle (x, y, distance)
+        FoV_area double; % max fov area 
         measurements table = table; % container for the current field of vision
         robot Robot;
     end
@@ -76,6 +77,7 @@ classdef Mapper < handle
                 end
                 obj.FoV{i} = points;
             end
+            obj.FoV_area = max(cellfun(@length, obj.FoV));
         end
 
         %% Measurement function
@@ -159,7 +161,6 @@ classdef Mapper < handle
             actions = [];
             values = [];
             distances = [];
-            fov_areas = [];
             robot_type = obj.robot.id.split('_');
             for i = 1:length(obj.angles)
                 action = task.type + "_" + string(i);
@@ -178,13 +179,12 @@ classdef Mapper < handle
                 nodes = [nodes; field];
                 distances = [distances; distance];
                 actions = [actions; repmat(action, length(field), 1)];
-                fov_areas = [fov_areas; repmat(fov_area, length(field), 1)];
             end
             if ~isempty(nodes)
                 cap = repmat(obj.capability, size(distances));
                 values = evalfis(obj.model, [distances/obj.max_range cap]);
                 % normalize values
-                values = values ./ fov_areas;
+                values = values ./ obj.FoV_area;
             end
             outcomes = table(nodes, values, actions);
         end

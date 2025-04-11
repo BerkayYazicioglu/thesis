@@ -17,20 +17,22 @@ if isempty(preprocessing.tasks)
     return
 end
 
-% add task types to preprocessing
-preprocessing.outcomes.task_types = arrayfun(@(x) preprocessing.tasks(x).type, preprocessing.outcomes.task_idx);
-
-% construct the task optimization with maximum coverage
-elements = groupcounts(preprocessing.outcomes, ["nodes" "task_types"]);
-sets = groupcounts(preprocessing.outcomes, ["task_idx" "actions"]);
-n = height(sets);
-m = height(elements);
-
 % calculate all distance and travel time pairs
 all_nodes = [robot.node preprocessing.tasks.node];
 D = distance_matrix(robot, all_nodes, 1);
-T = seconds(D./robot.speed);
-t_max = max(T + [seconds(0) preprocessing.dt]); 
+T = seconds(D./robot.speed) + [seconds(0) preprocessing.dt];
+
+% add task types to preprocessing
+preprocessing.outcomes.task_types = arrayfun(@(x) preprocessing.tasks(x).type, preprocessing.outcomes.task_idx);
+preprocessing.outcomes.t = seconds(T(preprocessing.outcomes.task_idx + 1))';
+preprocessing.outcomes.t = normalize(preprocessing.outcomes.t, 1, "range", [0.01 1]);
+
+% construct the task optimization with maximum coverage
+elements = groupsummary(preprocessing.outcomes, ["nodes" "task_types"], ...
+    ["max", "mean", "median"], ["values", "t"]);
+sets = groupcounts(preprocessing.outcomes, ["task_idx" "actions"]);
+n = height(sets);
+m = height(elements);
 
 % construct gurobi model
 model.A = sparse([]);
@@ -66,7 +68,7 @@ model.lb = zeros(num_vars, 1);
 model.ub = ones(num_vars, 1);
 
 %% Constructing model.A (Constraints)
-A = sparse(2 * m + 3 * n + 1, num_vars);
+A = sparse(2 * m + 2 * n + 1, num_vars);
 rhs = [];
 sense = '';
 row_idx = 1;
@@ -76,14 +78,16 @@ A(row_idx, S(:)) = 1;
 row_idx = row_idx + 1;
 rhs = [rhs; robot.policy.prediction_horizon];
 sense = [sense; '<'];
+
 % select at most one set per task
-for j = 1:n
-    flags = sets.task_idx == sets.task_idx(j);
-    A(row_idx, S(flags)) = 1;
-    row_idx = row_idx + 1;
-    rhs = [rhs; 1];
-    sense = [sense; '<'];
-end
+% for j = 1:n
+%     flags = sets.task_idx == sets.task_idx(j);
+%     A(row_idx, S(flags)) = 1;
+%     row_idx = row_idx + 1;
+%     rhs = [rhs; 1];
+%     sense = [sense; '<'];
+% end
+
 % Sij -> E(Sij)
 M = max(elements.GroupCount) + 1;
 for j = 1:n
@@ -106,7 +110,7 @@ for j = 1:n
     rhs = [rhs; sets.GroupCount(j) + M];
     sense = [sense; '<'];
 end
-% ej -> {exactly one S | ej in S}
+% ej -> {at most two S | ej in S}
 M = height(sets) + 1;
 for j = 1:m
     flags = elements.nodes(j) == preprocessing.outcomes.nodes & ...
@@ -120,11 +124,11 @@ for j = 1:m
     rhs = [rhs; 1 - M];
     sense = [sense; '>'];
 
-    % sum({S | ej in S}) <= 1  + M(1 - Ej)
+    % sum({S | ej in S}) <= 2  + M(1 - Ej)
     A(row_idx, S(flags)) = 1;
     A(row_idx, E(j)) = M;
     row_idx = row_idx + 1;
-    rhs = [rhs; 1 + M];
+    rhs = [rhs; 3 + M];
     sense = [sense; '<'];
 end
 
@@ -133,20 +137,24 @@ model.A = A;
 model.rhs = rhs;
 model.sense = sense;
 model.obj = zeros(1, num_vars);
-for i = 1:n
+% for i = 1:n
+%     % objective function
+%     set = sets(i, :);
+%     U = dictionary("map", 0, "search", 0);
+%     flags = preprocessing.outcomes.task_idx == set.task_idx & ...
+%             preprocessing.outcomes.actions == set.actions;
+%     U(preprocessing.tasks(set.task_idx).type) = sum(preprocessing.outcomes.values(flags));
+%     t = T(1, set.task_idx+1) + preprocessing.dt(set.task_idx);
+%     model.obj(S(i)) = mcdm(robot.mission.mcdm, ...
+%                             1-min(t, t_max)/t_max, U("map"), U("search")); 
+% end
+for i = 1:m
     % objective function
-    set = sets(i, :);
-    U = dictionary("map", 0, "search", 0);
-    flags = preprocessing.outcomes.task_idx == set.task_idx & ...
-            preprocessing.outcomes.actions == set.actions;
-    U(preprocessing.tasks(set.task_idx).type) = sum(preprocessing.outcomes.values(flags));
-    t = T(1, set.task_idx+1) + preprocessing.dt(set.task_idx);
-    model.obj(S(i)) = mcdm(robot.mission.mcdm, ...
-                            1-min(t, t_max)/t_max, U("map"), U("search")); 
+    model.obj(E(i)) = elements.mean_values(i) / elements.mean_t(i);
 end
 
 %% Run gurobi
-params.outputflag = 1; % Display Gurobi output
+params.outputflag = 0; % Display Gurobi output
 params.WorkLimit = max_work_limit;
 params.MIPFocus = 1; 
 result = gurobi(model, params);
@@ -173,11 +181,5 @@ pp.constraints = preprocessing.constraints(selected_tasks);
 
 fprintf('ej : %d | yij: %d | selected: %d | init tasks/action: %d | final task/action % d | n tasks: %d \n', ...
          height(elements), height(preprocessing.outcomes), height(pp.outcomes), height(sets), height(selected_sets), length(selected_tasks));
-
-% debug
-loc = robot.world.get_coordinates([preprocessing.tasks(selected_sets.task_idx).node]);
-selected_sets.X = loc(:,1) * 5;
-selected_sets.Y = loc(:,2) * 5;
-selected_sets.u = nonzeros(model.obj(find(x(S))));
 
 end

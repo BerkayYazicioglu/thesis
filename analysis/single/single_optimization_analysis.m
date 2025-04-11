@@ -29,7 +29,7 @@ function single_optimization_analysis(mission, gui, robot_id)
         if ~pp.charge_flag
             n = length([pp.cache.t{:}]);
             rel_t = [pp.cache.t{:}]' - ts(i);
-            t_data = [t_data; 1 - min(rel_t, pp.t_max) ./ pp.t_max];
+            t_data = [t_data; [pp.cache.t_mcdm{:}]'];
             u_map_data = [u_map_data; [pp.cache.u_map{:}]'];
             u_search_data = [u_search_data; [pp.cache.u_search{:}]'];
             % calculate which interval the data falls under

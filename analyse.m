@@ -6,6 +6,7 @@ close
 addpath("analysis/"); 
 addpath("analysis/single"); 
 addpath("analysis/multi"); 
+addpath("src/gui/");
 
 global gui result_path missions;
 if exist('gui', 'Var') & ~isempty(gui)
@@ -26,8 +27,8 @@ single_run_plots = ["distance"
                     "mission"];
 multi_run_plots = ["distance"
                    "area"
-                   "energy"
-                   "victim"];
+                   "victim"
+                   "utility"];
 
 %% Bind gui 
 gui = analysis_app;
@@ -50,6 +51,8 @@ gui.mission_select.ValueChangedFcn = @mission_select;
 gui.single_plot_options.ValueChangedFcn = @single_options_select;
 gui.single_plot_select.ValueChangedFcn = @single_plot_select;
 gui.type_switch.ValueChangedFcn = @switch_callback;
+
+gui.multi_plot_select.ValueChangedFcn = @multi_plot_select;
 
 
 %% Callbacks
@@ -85,7 +88,8 @@ function save(app, event)
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
             missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
     elseif gui.type_switch.Value == "multi"
-        
+        feval("multi_" + gui.multi_plot_select.Value + "_analysis", ...
+            missions, gui);
     end
     disp("save done");
 end
@@ -94,8 +98,8 @@ end
 function switch_callback(app, event)
     global gui missions
     if gui.type_switch.Value == "multi"
-
-
+        feval("multi_" + gui.multi_plot_select.Value + "_analysis", ...
+            missions, gui);
     elseif gui.type_switch.Value == "single"
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
             missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
@@ -109,6 +113,16 @@ function single_plot_select(app, event)
     if gui.type_switch.Value == "single"
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
             missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
+    end
+end
+
+%% 
+function multi_plot_select(app, event)
+    global gui missions
+    % run the currently selected plot with the new selections
+    if gui.type_switch.Value == "multi"
+        feval("multi_" + gui.multi_plot_select.Value + "_analysis", ...
+            missions, gui);
     end
 end
 

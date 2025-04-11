@@ -1,4 +1,4 @@
-function [model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a)
+function [model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a, tmax)
 %% Initialize Gurobi Model
 n = numel(a);
 n_const = size(T_const, 2);
@@ -108,7 +108,7 @@ model.ub(X(:)) = 1;
 
 % Bounds for Continuous Variables
 model.lb(T(:)) = 0; % Execution times are non-negative
-model.ub(T(:)) = 1;
+model.ub(T(:)) = tmax;
 model.lb(T(1)) = 0;
 model.ub(T(1)) = 0;
 
@@ -118,8 +118,11 @@ model.lb(E(1)) = e0;
 model.ub(E(1)) = e0;
 
 model.lb(U(:)) = 0;  % U_j must be non-negative
-model.ub(U(:)) = inf; % No upper bound on U_j
+model.ub(U(:)) = 1000; % No upper bound on U_j
+model.lb(W(:)) = 0;  % U_j must be non-negative
+model.ub(W(:)) = 1000; % No upper bound on U_j
 model.ub(U(1)) = 0; 
+model.ub(W(1)) = 0; 
 model.lb(delta(:)) = 0; % Binary variable lower bound
 model.ub(delta(:)) = 1; % Binary variable upper bound
 model.lb(delta(1)) = 0; 
@@ -131,6 +134,9 @@ model.ub(P(1)) = 1;
 
 model.lb(Z(:)) = 0;
 model.ub(Z(:)) = 1;
+
+model.lb(ksi(:)) = 0;
+model.ub(ksi(:)) = 1;
 
 %% Constructing model.A (Constraints)
 A = [];
@@ -237,48 +243,48 @@ for j = 1:n
     end
 end
 
-for j = 1:n
-    % Case 1: If delta_j = 1, enforce U_j = w_j1 * ((1 - T_j) - a_j) + w_j2 * a_j
-    % U_j + w_j1 * Tj = w_j1 - wj_1 * a_j + w_j2 * a_j
+for j = 2:n
+    % Case 1: If delta_j = 1, enforce U_j = w_j1 * ((1 - sum_j Xij Tij / tmaxrow) - a_j) + w_j2 * a_j
+    % U_j + w_j1 * sum_j Xij Tij / tmaxrow = w_j1 - wj_1 * a_j + w_j2 * a_j
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
     model.genconind(end).a(U(j)) = 1;  
-    model.genconind(end).a(T(j)) = w(j,1);
+    model.genconind(end).a(X(:,j)) = w(j,1) * T_trans(:,j) ./ max(T_trans(:,j));
     model.genconind(end).rhs = w(j, 1) - w(j,1) * a(j) + w(j,2) * a(j);  % Right-hand side
     model.genconind(end).sense = '=';  % Enforce equation
 end
-for j = 1:n
-    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - (1 - T_j)) + w_j2 * (1 - T_j)
-    % U_j - w_j3 * T_j + w_j2 * T_j = w_j3 * a_j - w_j3 + w_j2
+for j = 2:n
+    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - (1 - sum_j Xij Tij / tmaxrow)) + w_j2 * (1 - sum_j Xij Tij / tmaxrow)
+    % U_j + (-w_j3  + wj2)* sum_j Xij Tij / tmaxrow = w_j3 * a_j - w_j3 + w_j2
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 0
     model.genconind(end).a = zeros(1, num_vars);
     model.genconind(end).a(U(j)) = 1;  
-    model.genconind(end).a(T(j)) = -w(j,3) + w(j,2);
+    model.genconind(end).a(X(:,j)) = (-w(j,3) + w(j,2)) * T_trans(:,j) ./ max(T_trans(:,j));
     model.genconind(end).rhs = w(j,3) * a(j) - w(j,3) + w(j,2);  % Right-hand side
     model.genconind(end).sense = '=';  % Enforce equation
 end
 
-for j = 1:n
-    % lambdaj = 1: 1 - Tj >= aj
+for j = 2:n
+    % deltaj = 1: 1 - sum_j Xij Tij / tmaxrow >= aj
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(T(j)) = -1;  
+    model.genconind(end).a(X(:,j)) = -T_trans(:,j) ./ max(T_trans(:,j));
     model.genconind(end).rhs = a(j) - 1;  % Right-hand side
     model.genconind(end).sense = '>';  % Enforces T_j >= a_j when delta_j = 1
 
-    % lambdaj = 0: aj >= 1 - Tj
+    % deltaj = 0: aj >= 1 - sum_j Xij Tij / tmaxrow
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(T(j)) = 1;  
+    model.genconind(end).a(X(:,j)) = T_trans(:,j) ./ max(T_trans(:,j));
     model.genconind(end).rhs = 1 - a(j);  % Right-hand side
     model.genconind(end).sense = '>'; % Enforces T_j < a_j when delta_j = 0
 end
 
-MT = 2;
+MT = 2*tmax;
 ME = 101;
 for i = 1:n
     for j = 1:n_const
@@ -358,6 +364,7 @@ variables.n = n;
 % params
 params.outputflag = 1; % Display Gurobi output
 params.PoolSolutions = 1000;
+params.NumericFocus = 1; 
 %params.MIPFocus = 1; % Focus on finding feasible solutions faster
 
 end
