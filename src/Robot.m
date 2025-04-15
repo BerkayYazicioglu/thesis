@@ -13,6 +13,7 @@ classdef Robot < handle
         crit_energy double {mustBeNonnegative}; % percentage 
         energy_per_m double {mustBeNonnegative}; % percentage
         policy; % struct for policy settings
+        task_eval fistree;
 
         node string;
         time duration;
@@ -66,6 +67,7 @@ classdef Robot < handle
             obj.energy_per_m = params.energy_per_m;
             obj.policy = params.policy;
             obj.pp_outputs = dictionary();
+            obj.task_eval = load(mission.settings.task_evaluation_model).fistreemodel;
             
             % place the robot 
             obj.q_init = mission.q_init;

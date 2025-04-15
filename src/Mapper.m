@@ -11,7 +11,7 @@ classdef Mapper < handle
         angles (1,:) double {mustBeVector}; % (degrees)
         arc double {mustBePositive}; % (degrees) 
         capability double {mustBeInRange(capability,0,1)}; 
-        model sugfis;
+        %model sugfis;
 
         FoV cell % area of effect per angle (x, y, distance)
         FoV_area double; % max fov area 
@@ -42,7 +42,7 @@ classdef Mapper < handle
             obj.arc = deg2rad(params.arc);
             obj.type = params.type;
             obj.capability = params.capability;
-            obj.model = readfis(params.model);
+            %obj.model = readfis(params.model);
 
             obj.robot = robot;
 
@@ -180,13 +180,13 @@ classdef Mapper < handle
                 distances = [distances; distance];
                 actions = [actions; repmat(action, length(field), 1)];
             end
-            if ~isempty(nodes)
-                cap = repmat(obj.capability, size(distances));
-                values = evalfis(obj.model, [distances/obj.max_range cap]);
-                % normalize values
-                values = values ./ obj.FoV_area;
-            end
-            outcomes = table(nodes, values, actions);
+            % if ~isempty(nodes)
+            %     cap = repmat(obj.capability, size(distances));
+            %     values = evalfis(obj.model, [distances/obj.max_range cap]);
+            %     % normalize values
+            %     values = values ./ obj.FoV_area;
+            % end
+            outcomes = table(nodes, distances, actions);
         end
 
         %% Measurement probability function

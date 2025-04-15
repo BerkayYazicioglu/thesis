@@ -21,11 +21,12 @@ gui:
     charger_types: [static, center_of_mass]
 mission:
     t_end: '05:00:00'
-    PI_model: PI_model.fis
+    PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: false
     coordination_radius: 3
     q_init: [1,1]
+    task_evaluation_model: task_evaluation.mat
     tasks:
         map:
             type: map
@@ -37,12 +38,12 @@ mission:
             pi_complete: ismember(node, robot.detector.measurements.nodes)
     mcdm:
         t: 1
-        m: 4
-        s: 15
-        mt: 8
-        st: 20
-        ms: 0
-        mst: 25
+        m: 2
+        s: 5
+        mt: 3
+        st: 8
+        ms: 10
+        mst: 10
     charger:
         id: charger
         max_step: 0.5

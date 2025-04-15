@@ -3,20 +3,20 @@ height: 1
 speed: 3
 crit_energy: 0
 energy_per_m: 0.1
-charge_per_s: 0.1
+charge_per_s: 99
 color: black
 policy:
     preprocessing: closest
     num_tasks: 100
-    optimizer: brute_force
+    optimizer: ga
     control_horizon: 1
     prediction_horizon: 10
 capabilities:
     detector:
         type: search
-        capability: 0.5
+        capability: 1
         model: search_capability.mat
-        t_s: '03:00'
+        t_s: '05:00'
         d_energy: 5
         features: [victim]
         max_range: 3
@@ -29,6 +29,6 @@ capabilities:
         t_s: '01:00'
         d_energy: 3
         features: [terrain, destruction, population]
-        max_range: 7
-        arc: 120
-        angles: [0, 90, 180, 270]
+        max_range: 5
+        arc: 360
+        angles: [0]
