@@ -41,12 +41,12 @@ for i = 1:height(sets)
         sets.priority(i) = max(0, ...
             numel(robot.mission.world.environment.neighbors(task.node)) - ...
             numel(robot.mission.map.neighbors(task.node)));
-        sets.norm(i) = robot.mapper.FoV_area;
+        sets.norm(i) = max(sets.GroupCount);
         sets.capability(i) = robot.mapper.capability;
         flags(i) = true;
     else
         sets.priority(i) = task.priority;
-        sets.norm(i) = robot.detector.FoV_area;
+        sets.norm(i) = max(sets.GroupCount);
         sets.capability(i) = robot.detector.capability;
     end
 end

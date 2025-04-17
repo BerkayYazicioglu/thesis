@@ -7,8 +7,8 @@ function output = milp_lns_task_allocator(robot, preprocessing)
 % u -> utility of the selected allocation
 % cache -> optimization cache
 
-cache = table({}, {}, [], {}, {}, {}, {}, ...
-    'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
+cache = table({}, {}, [], {}, {}, {}, {}, [], ...
+    'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e', 'action_eval'});
 
 if isempty(preprocessing.tasks)
     output.tasks = Task.empty;
@@ -18,10 +18,11 @@ if isempty(preprocessing.tasks)
     output.cache = cache;
     output.t_max = seconds(0);
     output.pp_task_idx = [];
+    output.action_eval = NaN;
     return
 end
 
-[pp, pp_task_idx] = milp_task_selector(robot, preprocessing);
+[pp, pp_task_idx] = task_selector(robot, preprocessing);
 
 if isempty(pp.tasks)
     output.tasks = Task.empty;
@@ -35,7 +36,29 @@ if isempty(pp.tasks)
 end
 
 % construct tsp formulation
-sets = groupcounts(pp.outcomes, ["task_idx" "actions"]);
+sets = groupcounts(preprocessing.outcomes, ["task_idx" "actions"]);
+sets.priority = zeros(height(sets), 1);
+sets.norm = zeros(height(sets), 1); 
+sets.capability = zeros(height(sets), 1);
+flags = false(height(sets), 1);
+for i = 1:height(sets)
+    task = preprocessing.tasks(sets.task_idx(i));
+    if task.type == "map"
+        sets.priority(i) = max(0, ...
+            numel(robot.mission.world.environment.neighbors(task.node)) - ...
+            numel(robot.mission.map.neighbors(task.node)));
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.mapper.capability;
+        flags(i) = true;
+    else
+        sets.priority(i) = task.priority;
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.detector.capability;
+    end
+end
+if sum(flags)
+    sets.priority(flags) = sets.priority(flags) / (max(sets.priority(flags) + 0.0001));
+end
 n = height(sets) + 1;
 
 % calculate all distance and travel time pairs
@@ -75,7 +98,12 @@ for i = 2:n
     set = sets(i-1, :);
     flags = pp.outcomes.task_idx == set.task_idx & ...
             pp.outcomes.actions == set.actions;
-    a(i) = sum(pp.outcomes.values(flags));
+
+    a(i) = evalfis(robot.task_eval, ...
+                  [set.capability ...
+                  sum(flags) / set.norm ...
+                  1 - median(pp.outcomes.distances(flags)) / max(pp.outcomes.distances(flags)), ...
+                  set.priority]);
     a_types(i) = pp.tasks(set.task_idx).type;
     wi2 = 0;
     wi3 = 0;
@@ -138,7 +166,8 @@ for i = 1:height(milp_output.cache)
                          {u_map_sol(:)'}, ...
                          {u_search_sol(:)'}, ...
                          {t_sol(:)'}, ...
-                         {e_sol(:)'}}];
+                         {e_sol(:)'}}, ...
+                         row.u_total];
     end
 end
 len_sol = sum(milp_output.u > 0);
@@ -153,6 +182,7 @@ if len_sol > 0
     output.cache = cache;
     output.t_max = t_max;
     output.pp_task_idx = pp_task_idx;
+    output.action_eval = milp_output.u_total;
 else
     output.tasks = Task.empty;
     output.actions = string.empty;
@@ -161,6 +191,7 @@ else
     output.cache = cache;
     output.t_max = seconds(0);
     output.pp_task_idx = pp_task_idx;
+    output.action_eval = NaN;
 end
 
 end
