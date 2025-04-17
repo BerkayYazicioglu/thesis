@@ -33,7 +33,7 @@ classdef Robot < handle
         pp_outputs;
         return_schedule timetable;
         cache table; 
-        prev_predictions table;
+        % prev_predictions table;
         considered_tasks string = string.empty;
         msg string = "";
     end
@@ -93,8 +93,9 @@ classdef Robot < handle
             end
 
             % previous predictions
-            obj.prev_predictions = table(string.empty, string.empty, ...
-                'VariableNames', {'node', 'type'});
+            % obj.prev_predictions = table(string.empty, string.empty, ...
+            %     'VariableNames', {'node', 'type'});
+            
             % history
             obj.history = timetable(obj.time, obj.node, "none", 0, 0, 0, 0,...
                 'VariableNames', {'node', ...
@@ -239,13 +240,11 @@ classdef Robot < handle
             obj.msg = sprintf('%-10s | %-30s | %.4f', obj.id, optimizer_fcn, toc(t0));
 
             % update previous predictions
-            if ~isempty(opt_results.cache)
-                [~, idx] = max(opt_results.cache.u);
-                prev_tasks = pp.tasks(opt_results.cache.tasks{idx});
-                obj.prev_predictions = table( ...
-                    {prev_tasks.node}', {prev_tasks.type}', ...
-                    'VariableNames', {'node', 'type'});
-            end
+            % if ~isempty(opt_results.tasks)
+            %     obj.prev_predictions = table( ...
+            %         {opt_results.tasks.node}', {opt_results.tasks.type}', ...
+            %         'VariableNames', {'node', 'type'});
+            % end
 
             % results
             obj.cache = opt_results.cache; 

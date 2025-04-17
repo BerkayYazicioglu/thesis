@@ -7,14 +7,18 @@ function output = hybrid_task_allocator(robot, preprocessing)
 % u -> utility of the selected allocation
 % cache -> optimization cache
 
+cache = table({}, {}, [], {}, {}, {}, {}, [], ...
+    'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e', 'action_eval'});
+
 if isempty(preprocessing.tasks)
     output.tasks = Task.empty;
     output.actions = string.empty;
     output.charge_flag = true;
     output.u = NaN;
-    output.cache = table({}, {}, [], {}, {}, {}, {}, 'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
+    output.cache = cache;
     output.t_max = seconds(0);
     output.pp_task_idx = [];
+    output.action_eval = NaN;
     return
 end
 
@@ -28,6 +32,7 @@ if isempty(pp.tasks)
     output.cache = cache;
     output.t_max = seconds(0);
     output.pp_task_idx = [];
+    output.action_eval = NaN;
     return;
 end
 

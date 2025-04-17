@@ -9,6 +9,7 @@ function [pp, task_idx] = milp_task_selector(robot, preprocessing)
 
 % ============================== params ===================================
 max_work_limit = 5;
+max_overlap = 2; 
 % =========================================================================
 
 if isempty(preprocessing.tasks)
@@ -22,15 +23,51 @@ all_nodes = [robot.node preprocessing.tasks.node];
 D = distance_matrix(robot, all_nodes, 1);
 T = seconds(D./robot.speed) + [seconds(0) preprocessing.dt];
 
+% process sets
+sets = groupcounts(preprocessing.outcomes, ["task_idx" "actions"]);
+sets.priority = zeros(height(sets), 1);
+sets.norm = zeros(height(sets), 1); 
+sets.capability = zeros(height(sets), 1);
+flags = false(height(sets), 1);
+for i = 1:height(sets)
+    task = preprocessing.tasks(sets.task_idx(i));
+    if task.type == "map"
+        sets.priority(i) = max(0, ...
+            numel(robot.mission.world.environment.neighbors(task.node)) - ...
+            numel(robot.mission.map.neighbors(task.node)));
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.mapper.capability;
+        flags(i) = true;
+    else
+        sets.priority(i) = task.priority;
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.detector.capability;
+    end
+end
+if sum(flags)
+    sets.priority(flags) = sets.priority(flags) / (max(sets.priority(flags) + 0.0001));
+end
+
 % add task types to preprocessing
 preprocessing.outcomes.task_types = arrayfun(@(x) preprocessing.tasks(x).type, preprocessing.outcomes.task_idx);
 preprocessing.outcomes.t = seconds(T(preprocessing.outcomes.task_idx + 1))';
 preprocessing.outcomes.t = normalize(preprocessing.outcomes.t, 1, "range", [0.01 1]);
+preprocessing.outcomes.values = zeros(height(preprocessing.outcomes), 1);
+for i = 1:height(sets)
+    flags = preprocessing.outcomes.task_idx == sets.task_idx(i) & ...
+            preprocessing.outcomes.actions == sets.actions(i);
+    action_eval = evalfis(robot.task_eval, ...
+        [sets.capability(i) ...
+        sets.GroupCount(i) / sets.norm(i) ...
+        1 - median(preprocessing.outcomes.distances(flags))...
+          / max(preprocessing.outcomes.distances(flags)), ...
+        sets.priority(i)]);
+    preprocessing.outcomes.values(flags) = action_eval / sum(flags) * ones(sum(flags), 1);
+end
 
 % construct the task optimization with maximum coverage
 elements = groupsummary(preprocessing.outcomes, ["nodes" "task_types"], ...
     ["max", "mean", "median"], ["values", "t"]);
-sets = groupcounts(preprocessing.outcomes, ["task_idx" "actions"]);
 n = height(sets);
 m = height(elements);
 
@@ -68,16 +105,16 @@ model.lb = zeros(num_vars, 1);
 model.ub = ones(num_vars, 1);
 
 %% Constructing model.A (Constraints)
-A = sparse(2 * m + 2 * n + 1, num_vars);
+A = sparse(2 * m + 2 * n, num_vars);
 rhs = [];
 sense = '';
 row_idx = 1;
 
-% select at most prediction horizon number of sets
-A(row_idx, S(:)) = 1;
-row_idx = row_idx + 1;
-rhs = [rhs; robot.policy.prediction_horizon];
-sense = [sense; '<'];
+% % select at most prediction horizon number of sets
+% A(row_idx, S(:)) = 1;
+% row_idx = row_idx + 1;
+% rhs = [rhs; robot.policy.prediction_horizon];
+% sense = [sense; '<'];
 
 % select at most one set per task
 % for j = 1:n
@@ -110,7 +147,7 @@ for j = 1:n
     rhs = [rhs; sets.GroupCount(j) + M];
     sense = [sense; '<'];
 end
-% ej -> {at most two S | ej in S}
+% ej -> {at most max overlap S | ej in S}
 M = height(sets) + 1;
 for j = 1:m
     flags = elements.nodes(j) == preprocessing.outcomes.nodes & ...
@@ -124,11 +161,11 @@ for j = 1:m
     rhs = [rhs; 1 - M];
     sense = [sense; '>'];
 
-    % sum({S | ej in S}) <= 2  + M(1 - Ej)
+    % sum({S | ej in S}) <= max_overlap  + M(1 - Ej)
     A(row_idx, S(flags)) = 1;
     A(row_idx, E(j)) = M;
     row_idx = row_idx + 1;
-    rhs = [rhs; 3 + M];
+    rhs = [rhs; max_overlap + M];
     sense = [sense; '<'];
 end
 

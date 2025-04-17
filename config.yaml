@@ -37,7 +37,7 @@ mission:
             pi_init: PI >= 0.1
             pi_complete: ismember(node, robot.detector.measurements.nodes)
     mcdm:
-        t: 1
+        t: 0
         m: 2
         s: 5
         mt: 3
