@@ -41,12 +41,12 @@ for i = 1:height(sets)
         sets.priority(i) = max(0, ...
             numel(robot.mission.world.environment.neighbors(task.node)) - ...
             numel(robot.mission.map.neighbors(task.node)));
-        sets.norm(i) = robot.mapper.FoV_area;
+        sets.norm(i) = max(sets.GroupCount);
         sets.capability(i) = robot.mapper.capability;
         flags(i) = true;
     else
         sets.priority(i) = task.priority;
-        sets.norm(i) = robot.detector.FoV_area;
+        sets.norm(i) = max(sets.GroupCount);
         sets.capability(i) = robot.detector.capability;
     end
 end
@@ -70,7 +70,11 @@ function children = mutation(parents, options, k, fitness, state, score, pop)
     for ii = 1:size(children, 1)
         child = children(ii,:);
         % pick 2 random cut points
-        idx = randperm(k, 2);
+        if k == 1
+            idx = 1;
+        else
+            idx = randperm(k, 2);
+        end
         startPt = min(idx);
         endPt = max(idx);
         % invert the substring

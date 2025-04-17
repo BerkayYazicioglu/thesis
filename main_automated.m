@@ -29,7 +29,7 @@ q_inits = {...
            };
 
 repetitions = 3;
-experiment_name = "ga_1_ugv_static";
+experiment_name = "greedy_1_ugv_dynamic";
 
 
 %% Get config
