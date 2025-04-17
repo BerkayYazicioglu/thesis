@@ -70,7 +70,11 @@ function children = mutation(parents, options, k, fitness, state, score, pop)
     for ii = 1:size(children, 1)
         child = children(ii,:);
         % pick 2 random cut points
-        idx = randperm(k, 2);
+        if k == 1
+            idx = 1;
+        else
+            idx = randperm(k, 2);
+        end
         startPt = min(idx);
         endPt = max(idx);
         % invert the substring

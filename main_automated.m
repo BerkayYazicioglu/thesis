@@ -29,7 +29,7 @@ q_inits = {...
            };
 
 repetitions = 3;
-experiment_name = "ga_1_ugv_static";
+experiment_name = "ga_1_ugv_dynamic";
 
 
 %% Get config
@@ -63,7 +63,7 @@ for i = 1:length(q_inits)
     for ii = 1:repetitions
         disp('experiment: ' + string(ii+repetitions*(i-1)));
 
-        % if ii+repetitions*(i-1) < 14
+        % if ii+repetitions*(i-1) < 11
         %     continue
         % end
 
