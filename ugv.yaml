@@ -1,6 +1,6 @@
 max_step: 1
 height: 1
-speed: 3
+speed: 1
 crit_energy: 0
 energy_per_m: 0.1
 charge_per_s: 99
