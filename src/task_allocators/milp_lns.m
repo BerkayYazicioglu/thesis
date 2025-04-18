@@ -55,6 +55,14 @@ if pred_horizon > size
         model.lb(variables.V(1)) = 1;
         model.lb(variables.V(unchanged)) = 1;
 
+        X = reshape(result.x(variables.X(:)), [variables.n variables.n]);
+        model.lb(variables.X(:)) = 0;
+        model.ub(variables.X(:)) = 1;
+        for i = 1:length(unchanged)
+            Xcol = X(:, unchanged(i));
+            model.lb(variables.X(find(Xcol), unchanged(i))) = 1;
+        end
+
         % solve the reduced model
         new_result = gurobi(model, params);
         if isfield(new_result, 'pool')

@@ -22,7 +22,7 @@ if isempty(preprocessing.tasks)
     return
 end
 
-[pp, pp_task_idx] = task_selector(robot, preprocessing);
+[pp, pp_task_idx] = milp_task_selector(robot, preprocessing);
 
 if isempty(pp.tasks)
     output.tasks = Task.empty;
@@ -36,13 +36,13 @@ if isempty(pp.tasks)
 end
 
 % construct tsp formulation
-sets = groupcounts(preprocessing.outcomes, ["task_idx" "actions"]);
+sets = groupcounts(pp.outcomes, ["task_idx" "actions"]);
 sets.priority = zeros(height(sets), 1);
 sets.norm = zeros(height(sets), 1); 
 sets.capability = zeros(height(sets), 1);
 flags = false(height(sets), 1);
 for i = 1:height(sets)
-    task = preprocessing.tasks(sets.task_idx(i));
+    task = pp.tasks(sets.task_idx(i));
     if task.type == "map"
         sets.priority(i) = max(0, ...
             numel(robot.mission.world.environment.neighbors(task.node)) - ...
@@ -139,7 +139,8 @@ milp_output = milp_lns(T_trans, ...
                        w, ...
                        a, ...
                        u, ...
-                       t_max);
+                       t_max, ...
+                       min(robot.policy.prediction_horizon, height(sets)));
 
 
 %% compile results
