@@ -8,12 +8,10 @@ addpath("analysis/single");
 addpath("analysis/multi"); 
 addpath("src/gui/");
 
-global gui result_path missions;
+global gui result_path;
 if exist('gui', 'Var') & ~isempty(gui)
     gui.delete;
 end
-
-missions = struct;
 
 %% Settings
 result_path = "results/"; 
@@ -30,6 +28,19 @@ multi_run_plots = ["distance"
                    "area"
                    "victim"
                    "utility"];
+
+groups = ["q_1_1"
+          "q_50_1"
+          "q_100_1"
+          "q_100_50"
+          "q_100_100"
+          "q_50_100"
+          "q_1_100"
+          "q_1_50"
+          "q_50_50"
+          "sides"
+          "corners"
+          "all"];
 
 %% Bind gui 
 gui = analysis_app;
@@ -53,12 +64,15 @@ gui.single_plot_options.ValueChangedFcn = @single_options_select;
 gui.single_plot_select.ValueChangedFcn = @single_plot_select;
 gui.type_switch.ValueChangedFcn = @switch_callback;
 
+gui.multi_group_select.Items = groups;
+gui.multi_group_select.Value = groups(1);
 gui.multi_plot_select.ValueChangedFcn = @multi_plot_select;
+gui.multi_group_select.ValueChangedFcn = @multi_group_select;
 
 
 %% Callbacks
 function save(app, event)
-    global gui result_path missions
+    global gui result_path
     datasets = arrayfun(@(x) string(x.Text), gui.dataset_filter.Parent.CheckedNodes);
     if datasets(1) == "Datasets"
         datasets(1) = [];
@@ -73,63 +87,58 @@ function save(app, event)
     gui.mission_select.Items = files;
     gui.mission_select.Value = files(1);
 
-    % load missions
-    for i = 1:length(datasets)
-        files = {dir(result_path + datasets(i)).name};
-        for ii = 3:length(files)
-            missions.(datasets(i))(ii-2) = load(result_path + datasets(i) + "/" + files{ii} + "/mission.mat").mission;
-        end
-    end
-
-    % calculate initial condition groups
-    
-
     % run the currently selected plot with the new selections
     if gui.type_switch.Value == "single"
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
-            missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
+            result_path + gui.dataset_select.Value + "/" + str2double(gui.mission_select.Value), gui);
     elseif gui.type_switch.Value == "multi"
-        feval("multi_" + gui.multi_plot_select.Value + "_analysis", ...
-            missions, gui);
+        feval("multi_" + gui.multi_plot_select.Value + "_analysis", gui);
     end
     disp("save done");
 end
 
 %% 
 function switch_callback(app, event)
-    global gui missions
+    global gui result_path
     if gui.type_switch.Value == "multi"
-        feval("multi_" + gui.multi_plot_select.Value + "_analysis", ...
-            missions, gui);
+        feval("multi_" + gui.multi_plot_select.Value + "_analysis", gui);
     elseif gui.type_switch.Value == "single"
-        feval("single_" + gui.single_plot_select.Value + "_analysis", ...
-            missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
+         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
+            result_path + gui.dataset_select.Value + "/" + str2double(gui.mission_select.Value), gui);
     end
 end
 
 %% 
 function single_plot_select(app, event)
-    global gui missions
+    global gui result_path
     % run the currently selected plot with the new selections
     if gui.type_switch.Value == "single"
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
-            missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
+            result_path + gui.dataset_select.Value + "/" + str2double(gui.mission_select.Value), gui);
     end
 end
 
 %% 
 function multi_plot_select(app, event)
-    global gui missions
+    global gui result_path
     % run the currently selected plot with the new selections
     if gui.type_switch.Value == "multi"
-        feval("multi_" + gui.multi_plot_select.Value + "_analysis", ...
-            missions, gui);
+        feval("multi_" + gui.multi_plot_select.Value + "_analysis", gui);
+    end
+end
+
+%% 
+function multi_group_select(app, event)
+    global gui result_path
+    % run the currently selected plot with the new selections
+    if gui.type_switch.Value == "multi"
+        feval("multi_" + gui.multi_plot_select.Value + "_analysis", gui);
     end
 end
 
 %%
 function dataset_select(app, event)
-    global gui result_path missions
+    global gui result_path
     % set mission selectors
     files = {dir(result_path + gui.dataset_select.Value).name};
     gui.mission_select.Items = files(3:end);
@@ -138,26 +147,26 @@ function dataset_select(app, event)
     % run the currently selected plot with the new selections
     if gui.type_switch.Value == "single"
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
-            missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
+            result_path + gui.dataset_select.Value + "/" + str2double(gui.mission_select.Value), gui);
     end
 end
 
 %% 
 function mission_select(app, event)
-    global gui missions
+    global gui result_path
     % run the currently selected plot with the new selections
     if gui.type_switch.Value == "single"
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
-            missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
+            result_path + gui.dataset_select.Value + "/" + str2double(gui.mission_select.Value), gui);
     end
 end
 
 %% 
 function single_options_select(app, event)
-    global gui missions
+    global gui result_path
     % run the currently selected plot with the new selection
     if gui.type_switch.Value == "single"
         feval("single_" + gui.single_plot_select.Value + "_analysis", ...
-            missions.(gui.dataset_select.Value)(str2double(gui.mission_select.Value)), gui);
+            result_path + gui.dataset_select.Value + "/" + str2double(gui.mission_select.Value), gui);
     end
 end

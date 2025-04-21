@@ -1,51 +1,42 @@
-function multi_distance_analysis(missions, gui, ~)
+function multi_distance_analysis(gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
+    dataset_dir = "analysis/postprocessing/datasets/";
+    alpha = 0.15;
     % ===========================
 
     panel = gui.RightPanel;
     gui.single_plot_options.Items = "none";
     gui.single_plot_options.Value = "none";
     
-    experiments = fields(missions);
+    experiments = gui.dataset_select.Items;
+    init_conds = gui.multi_group_select.Value;
+
     colors = distinguishable_colors(length(experiments), 'white');
     % start creating plots
     delete(panel.Children);
     ax = axes(panel);
 
     for j = 1:length(experiments)
-        M = missions.(experiments{j});
-        data = M(1).robots(1).history(:, 'distance');
-        robots = M(1).robots;
-        for k = 2:length(robots)
-            data = synchronize(data, robots(k).history(:,'distance'), 'union');
-        end
-
-        for k = 2:length(M)
-            robots = M(k).robots;
-            for i = 1:length(robots)
-                data = synchronize(data, robots(i).history(:, 'distance'), 'union'); 
-            end
-        end
-
-        hold(ax, 'on')
-        data = fillmissing(data, 'previous');
-
+        data = load(dataset_dir + experiments{j}).data.(init_conds).distance;
+        
+        hold(ax, 'on');
+        
         % mean
-        plot(ax, data.Time, mean(data{:, :}, 2), ...
+        plot(ax, data.Time, data.mean, ...
             'Color', colors(j, :));
         % max
-        plot(ax, data.Time, max(data{:, :}, [], 2), ...
-            '-', 'Color', [colors(j, :), 0.3]);
+        plot(ax, data.Time, data.max, ...
+            '-', 'Color', [colors(j, :), alpha]);
         % min
-        plot(ax, data.Time, min(data{:, :}, [], 2), ...
-            '-', 'Color', [colors(j, :), 0.3]);
+        plot(ax, data.Time, data.min, ...
+            '-', 'Color', [colors(j, :), alpha]);
         % region
         p = patch(ax, [data.Time' fliplr(data.Time')], ...
-            [max(data{:, :}, [], 2)' fliplr(min(data{:, :}, [], 2)')], ...
+            [data.max' fliplr(data.min')], ...
             colors(j, :));
-        set(p, 'FaceAlpha', 0.3);
+        set(p, 'FaceAlpha', alpha);
         set(p, 'EdgeColor', 'none');
 
         hold(ax, 'off');

@@ -1,4 +1,4 @@
-function single_task_analysis(mission, gui, robot_id)
+function single_task_analysis(data_dir, gui, robot_id)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
@@ -7,6 +7,8 @@ function single_task_analysis(mission, gui, robot_id)
 
     addpath('src\gui\');
     % ===========================
+
+    mission = load(data_dir + "/mission.mat").mission;
     
     panel = gui.RightPanel;
 

@@ -1,4 +1,4 @@
-function single_mission_analysis(mission, gui, robot_id)
+function single_mission_analysis(data_dir, gui, robot_id)
 
     % ========= params ==========
     markers = dictionary("victim", "diamond", ...
@@ -19,6 +19,8 @@ function single_mission_analysis(mission, gui, robot_id)
     addpath('src\gui\');
     % ==========================+
 
+    mission = load(data_dir + "/mission.mat").mission;
+    
     panel = gui.RightPanel;
 
     global t

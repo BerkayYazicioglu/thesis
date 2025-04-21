@@ -1,11 +1,12 @@
-function single_energy_analysis(mission, gui, ~)
+function single_energy_analysis(data_dir, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
     % ===========================
+
+    mission = load(data_dir + "/mission.mat").mission;
     
     panel = gui.RightPanel;
-
     gui.single_plot_options.Items = "none";
     gui.single_plot_options.Value = "none";
     

@@ -1,80 +1,46 @@
-function multi_victim_analysis(missions, gui, ~)
+function multi_victim_analysis(gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
     markers = dictionary("detected", "pentagram", "revisited", ".");
+    dataset_dir = "analysis/postprocessing/datasets/";
+    alpha = 0.15;
     % ===========================
     
     panel = gui.RightPanel;
     gui.single_plot_options.Items = "none";
     gui.single_plot_options.Value = "none";
     
-    experiments = fields(missions);
+    experiments = gui.dataset_select.Items;
+    init_conds = gui.multi_group_select.Value;
+
     colors = distinguishable_colors(length(experiments), 'white');
-    health = {};
-    count = {};
-
-    for j = 1:length(experiments)
-        M = missions.(experiments{j});
-
-        count_data = timetable(seconds(0), 0, 'VariableNames', {'count'});
-        health_data = timetable(duration.empty(0,1), [], 'VariableNames', {'health'});
-        for k = 1:length(M)
-            mission = M(k);
-            % go over victims and construct data
-            victim_data = timetable();
-            for i = 1:length(mission.world.victims)
-                victim = mission.world.victims(i);
-                if ~isempty(victim.history)
-                    history = victim.history;
-                    history.victim_id = i * ones(height(history), 1);
-                    victim_data = [victim_data; history];
-                end
-            end
-            victim_data = sortrows(victim_data, 'Time');
-            detected_data = victim_data(victim_data.status == 'detected', :);
-            detected_data.count = [1:height(detected_data)]';
-            
-            count_data = synchronize(count_data, detected_data(:, "count"), 'union');
-            health_data = [health_data; detected_data(:, "health")];
-        end
-        count_data(:, 1) = [];
-        count_data(1, :) = array2timetable(zeros(1, size(count_data, 2)), 'RowTimes', seconds(0));
-        count_data = fillmissing(count_data, 'previous'); 
-        count_data.mean = mean(count_data{:, :}, 2);
-        count_data.max = max(count_data{:, :}, [], 2);
-        count_data.min = min(count_data{:, :}, [], 2);
-        health_data = sortrows(health_data, 'Time');
-        count{end+1} = count_data(:, {'mean', 'max', 'min'});
-        health{end+1} = health_data;
-    end
-
+    
     % start creating plots
     delete(panel.Children);
     layout = tiledlayout(panel, 2, 1); 
-
-    new_ticks = 0:x_label_interval:mission.time;
-    new_ticks.Format = 'hh:mm';
 
     % plot victim discovery per experiment
     ax = nexttile(layout);
     hold(ax, 'on');
 
     for i = 1:length(experiments)
+        data = load(dataset_dir + experiments{i}).data.(init_conds).victim;
+
         % mean
-        plot(ax, count{i}.Time, count{i}.mean, ...
+        plot(ax, data.count.Time, data.count.mean, ...
             'Color', colors(i, :));
         % max
-        plot(ax, count{i}.Time, count{i}.max, ...
-            '-', 'Color', [colors(i, :), 0.3]);
+        plot(ax, data.count.Time, data.count.max, ...
+            '-', 'Color', [colors(i, :), alpha]);
         % min
-        plot(ax, count{i}.Time, count{i}.min, ...
-            '-', 'Color', [colors(i, :), 0.3]);
+        plot(ax, data.count.Time, data.count.min, ...
+            '-', 'Color', [colors(i, :), alpha]);
         % region
-        p = patch(ax, [count{i}.Time' fliplr(count{i}.Time')], ...
-            [count{i}.max' fliplr(count{i}.min')], ...
+        p = patch(ax, [data.count.Time' fliplr(data.count.Time')], ...
+            [data.count.max' fliplr(data.count.min')], ...
             colors(i, :));
-        set(p, 'FaceAlpha', 0.3);
+        set(p, 'FaceAlpha', alpha);
         set(p, 'EdgeColor', 'none');
     end
 
@@ -88,6 +54,8 @@ function multi_victim_analysis(missions, gui, ~)
     legend([legend_entries{:}], cellfun(@(x) replace(string(x), '_', ' '), experiments)', ...
         'Location', 'bestoutside');
 
+    new_ticks = 0:x_label_interval:data.count.Time(end);
+    new_ticks.Format = 'hh:mm';
     xticks(ax, new_ticks);
     set(ax, 'XTickLabel', {' '});
     title(ax, 'number of unique victim detections');
@@ -99,8 +67,9 @@ function multi_victim_analysis(missions, gui, ~)
     hold(ax, 'on');
     
     for i = 1:length(experiments)
-        health_data = health{i};
-        scatter(ax, health_data.Time, health_data.health, 75, ...
+        data = load(dataset_dir + experiments{i}).data.(init_conds).victim;
+
+        scatter(ax, data.health.Time, data.health.health, 75, ...
                'MarkerFaceColor', colors(i, :), ...
                'MarkerEdgeColor', colors(i, :), ...
                'Marker', '.');

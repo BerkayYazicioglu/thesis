@@ -1,9 +1,11 @@
-function single_optimization_analysis(mission, gui, robot_id)
+function single_optimization_analysis(data_dir, gui, robot_id)
 
     % ========= params ==========
     interval = 5 * seconds(60); % minutes
     x_label_interval = 30 * seconds(60); % minutes
     % ===========================
+    
+    mission = load(data_dir + "/mission.mat").mission;
     
     panel = gui.RightPanel;
 

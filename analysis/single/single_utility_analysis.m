@@ -1,10 +1,12 @@
-function single_utility_analysis(mission, gui, ~)
+function single_utility_analysis(data_dir, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
 
     addpath("src\utils\");
     % ===========================
+
+    mission = load(data_dir + "/mission.mat").mission;
 
     panel = gui.RightPanel;
     gui.single_plot_options.Items = "none";
