@@ -1,6 +1,6 @@
 %%
 clc
-clear 
+clear
 close
 
 addpath("analysis/"); 
@@ -12,6 +12,7 @@ global gui result_path missions;
 if exist('gui', 'Var') & ~isempty(gui)
     gui.delete;
 end
+
 missions = struct;
 
 %% Settings
