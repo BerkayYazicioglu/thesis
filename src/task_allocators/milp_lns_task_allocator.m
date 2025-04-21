@@ -73,7 +73,7 @@ E = D * robot.energy_per_m + repmat(de, n, 1);
 T(find(eye(n))) = 0;
 
 % approximate the maximum time
-t_max = milp_tmax(T); 
+t_max = sum(T(:)); 
 % T_trans = min(1, T ./ t_max);
 T_trans = T;
 T_const = zeros(n, height(preprocessing.constraints{1}));

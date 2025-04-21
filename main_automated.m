@@ -29,7 +29,7 @@ q_inits = {...
            };
 
 repetitions = 3;
-experiment_name = "ga_1_ugv_dynamic";
+experiment_name = "ga_1_ugv_dynamic_5";
 
 
 %% Get config

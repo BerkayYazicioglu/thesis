@@ -4,7 +4,7 @@ X = reshape(result.x(variables.X(:)), [variables.n variables.n]);
 idx = 1;
 path = 1;
 while true
-    next = find(X(idx, :));
+    next = find(X(idx, :) == 1);
     if isempty(next)
         break
     end
