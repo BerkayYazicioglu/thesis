@@ -8,9 +8,9 @@ color: black
 policy:
     preprocessing: closest
     num_tasks: 100
-    optimizer: hybrid
+    optimizer: brute_force
     control_horizon: 1
-    prediction_horizon: 10
+    prediction_horizon: 5
 capabilities:
     detector:
         type: search

@@ -1,17 +1,18 @@
 function output = milp_lns(T_trans, E_trans, T_const, E_const, e0, w, a, u, tmax, pred_horizon)
 
 % =========================================================================
-max_work_limit = 5;
+max_s_incumbent = 15;
+max_s_lns = 5;
 size = 5;
-max_stall = 8;
-max_iter = 20;
+max_stall = 5;
+max_iter = 10;
 % =========================================================================
 cache = table({}, {}, {}, {}, [], ...
     'VariableNames', {'x', 't', 'e', 'u', 'u_total'});
  
 % create an incumbent solution 
 [model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a, tmax, pred_horizon);
-params.WorkLimit = max_work_limit;
+params.TimeLimit = max_s_incumbent;
 params.MIPFocus = 1; 
 params.outputflag = 1;
 result = gurobi(model, params);
@@ -33,7 +34,7 @@ else
     result.objval = sum(result.x(variables.W(:)));
 end
 
-params.WorkLimit = 100;
+params.TimeLimit = max_s_lns;
 
 % employ large neighborhood search
 if pred_horizon > size

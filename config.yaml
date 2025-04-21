@@ -51,7 +51,7 @@ mission:
         color: white
         policy: 
             optimizer: static
-            control_horizon: 10
+            control_horizon: 3
             task_proximity: 3
     robots:
         ugv:

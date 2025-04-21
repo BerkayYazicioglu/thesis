@@ -8,7 +8,7 @@ function [pp, task_idx] = milp_task_selector(robot, preprocessing)
 % cache -> optimization cache
 
 % ============================== params ===================================
-max_work_limit = 5;
+max_work_limit = 15;
 max_overlap = 2; 
 % =========================================================================
 
@@ -79,6 +79,7 @@ model.sense = '';
 model.vtype = '';
 model.modelsense = 'max';
 model.varnames = {};
+model.genconind = struct.empty;
 
 %% Decision Variables
 % Sij (set selection)
@@ -105,7 +106,7 @@ model.lb = zeros(num_vars, 1);
 model.ub = ones(num_vars, 1);
 
 %% Constructing model.A (Constraints)
-A = sparse(2 * m + 2 * n, num_vars);
+A = sparse(2 * m, num_vars);
 rhs = [];
 sense = '';
 row_idx = 1;
@@ -126,34 +127,43 @@ row_idx = 1;
 % end
 
 % Sij -> E(Sij)
-M = max(elements.GroupCount) + 1;
+M = max(elements.GroupCount) + 20;
 for j = 1:n
     flags = preprocessing.outcomes.task_idx == sets.task_idx(j) & ...
             preprocessing.outcomes.actions == sets.actions(j);
     flags = ismember(elements.nodes, preprocessing.outcomes.nodes(flags)) & ...
             ismember(elements.task_types, preprocessing.outcomes.task_types(flags));
 
-    % sum(E(flags)) >= |E(Sij)| - M(1 - Sj);
-    A(row_idx, E(flags)) = 1;
-    A(row_idx, S(j)) = -M;
-    row_idx = row_idx + 1;
-    rhs = [rhs; sets.GroupCount(j) - M];
-    sense = [sense; '>'];
+    % Sj -> sum(E(flags)) = |E(Sij)| 
+    model.genconind(end+1).binvar = S(j);  
+    model.genconind(end).binval = 1;  
+    model.genconind(end).a = zeros(1, num_vars);
+    model.genconind(end).a(E(flags)) = 1;  
+    model.genconind(end).rhs = sets.GroupCount(j); 
+    model.genconind(end).sense = '='; 
 
-    % sum(E(flags)) <= |E(Sij)| + M(1 - Sj);
-    A(row_idx, E(flags)) = 1;
-    A(row_idx, S(j)) = M;
-    row_idx = row_idx + 1;
-    rhs = [rhs; sets.GroupCount(j) + M];
-    sense = [sense; '<'];
+    % % sum(E(flags)) >= |E(Sij)| - M(1 - Sj);
+    % A(row_idx, E(flags)) = 1;
+    % A(row_idx, S(j)) = -M;
+    % row_idx = row_idx + 1;
+    % rhs = [rhs; sets.GroupCount(j) - M];
+    % sense = [sense; '>'];
+    % 
+    % % sum(E(flags)) <= |E(Sij)| + M(1 - Sj);
+    % A(row_idx, E(flags)) = 1;
+    % A(row_idx, S(j)) = M;
+    % row_idx = row_idx + 1;
+    % rhs = [rhs; sets.GroupCount(j) + M];
+    % sense = [sense; '<'];
 end
 % ej -> {at most max overlap S | ej in S}
-M = height(sets) + 1;
+M = height(sets) + 2;
 for j = 1:m
     flags = elements.nodes(j) == preprocessing.outcomes.nodes & ...
             elements.task_types(j) == preprocessing.outcomes.task_types;
     flags = ismember(sets.task_idx, preprocessing.outcomes.task_idx(flags)) & ...
             ismember(sets.actions, preprocessing.outcomes.actions(flags));
+
     % sum({S | ej in S}) >= 1  - M(1 - Ej)
     A(row_idx, S(flags)) = 1;
     A(row_idx, E(j)) = -M;
