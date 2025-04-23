@@ -9,6 +9,7 @@ classdef World < handle
         victims (1,:) Victim = Victim.empty;
         environment graph = graph; % 8-connected graph where the robots move
         X, Y (:, :) double {mustBeReal, mustBeNonNan}; % meshgrid for x,y coordinates (m)
+        special_ids;
     end
     
     methods
@@ -71,6 +72,7 @@ classdef World < handle
                     obj.environment.Nodes.victim(str2double(node)) + 1;
             end
 
+            obj.special_ids = string.empty;
             obj.add_gates();
         end
 
@@ -133,6 +135,7 @@ classdef World < handle
                 idx = obj.environment.findnode(id);
                 z = linspace(z0(1), z0(2), numel(idx));
                 terrain(idx) = z; 
+                obj.special_ids = [obj.special_ids(:); id];  
             end
             obj.environment.Nodes.terrain = terrain;
         end

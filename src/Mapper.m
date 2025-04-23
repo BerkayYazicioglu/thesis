@@ -136,6 +136,12 @@ classdef Mapper < handle
                     idx(end+1) = i;
                 end
             end
+            % account for the special ids
+            specials = intersect(obj.robot.world.special_ids, field);
+            if ~isempty(specials)
+                special_idx = find(ismember(field, specials));
+                idx = unique([idx special_idx']);
+            end
         end
 
         %% Get the maximal field of effect from a given node

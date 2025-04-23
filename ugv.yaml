@@ -16,7 +16,7 @@ capabilities:
         type: search
         capability: 1
         model: search_capability.mat
-        t_s: '05:00'
+        t_s: '03:00'
         d_energy: 10
         features: [victim]
         max_range: 4
@@ -26,7 +26,7 @@ capabilities:
         type: map
         capability: 1
         model: map_capability.fis
-        t_s: '01:00'
+        t_s: '00:30'
         d_energy: 5
         features: [terrain, destruction, population]
         max_range: 6

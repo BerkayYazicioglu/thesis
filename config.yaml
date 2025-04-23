@@ -20,12 +20,12 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '07:00:00'
+    t_end: '08:00:00'
     PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: false
     coordination_radius: 3
-    q_init: [1,1]
+    q_init: [100,100]
     task_evaluation_model: task_evaluation.mat
     tasks:
         map:
@@ -38,12 +38,12 @@ mission:
             pi_complete: ismember(node, measured)
     mcdm:
         t: 1
-        m: 2
-        s: 6
-        mt: 3
-        st: 8
-        ms: 10
-        mst: 10
+        m: 4
+        s: 8
+        mt: 7
+        st: 15
+        ms: 20
+        mst: 20
     charger:
         id: charger
         max_step: 0.5
