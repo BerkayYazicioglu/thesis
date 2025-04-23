@@ -7,8 +7,8 @@ charge_per_s: 99
 color: black
 policy:
     preprocessing: closest
-    num_tasks: 100
-    optimizer: greedy
+    num_tasks: 200
+    optimizer: milp_lns
     control_horizon: 1
     prediction_horizon: 6
 capabilities:
@@ -16,19 +16,19 @@ capabilities:
         type: search
         capability: 1
         model: search_capability.mat
-        t_s: '10:00'
+        t_s: '05:00'
         d_energy: 10
         features: [victim]
-        max_range: 5
+        max_range: 4
         arc: 360
         angles: [0]
     mapper:
         type: map
         capability: 1
         model: map_capability.fis
-        t_s: '03:00'
-        d_energy: 1
+        t_s: '01:00'
+        d_energy: 5
         features: [terrain, destruction, population]
-        max_range: 7
+        max_range: 6
         arc: 360
         angles: [0]

@@ -1,4 +1,4 @@
-function output = brute_force_task_allocator(robot, preprocessing)
+function output = greedy_t_task_allocator(robot, preprocessing)
 % preprocessing -> tasks, de, dt, outcomes (table with columns <nodes>, <values>, <actions>, <task_idx>)
 %
 % tasks -> ordered allocted tasks
@@ -6,10 +6,6 @@ function output = brute_force_task_allocator(robot, preprocessing)
 % charge_flag -> return to the charger at the end of the tasks
 % u -> utility of the selected allocation
 % cache -> optimization cache
-
-% parameters
-max_iter = 100;
-prediction_horizon = min(robot.policy.prediction_horizon, length(preprocessing.tasks));
 
 cache = table({}, {}, {}, [], {}, {}, {}, {}, {}, [], ...
     'VariableNames', {'sets', 'tasks', 'actions', 'u', 'u_map', 'u_search', 't_mcdm', 't', 'e', 'action_eval'});
@@ -23,6 +19,7 @@ if isempty(preprocessing.tasks)
     output.t_max = seconds(1);
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
     return;
 end
 
@@ -59,15 +56,17 @@ de(2:end) = preprocessing.de(sets.task_idx);
 T = D./robot.speed + repmat(dt, height(sets)+1, 1);
 E = D * robot.energy_per_m + repmat(de, height(sets)+1, 1);
 T(find(eye(height(sets)+1))) = 0;
-
+T_mcdm_vals = T(:, 2:end);
+T_mcdm_vals = T_mcdm_vals(T_mcdm_vals > 0);
 t_max = max(T(1, :));
 
 %% fitness function
 function u = fitness(x)
     actions_ = sets.actions(x);
     u_ = 0;
-    action_eval_ = 0;
+    action_eval = 0;
     t_ = zeros(1, length(x));
+    t_(1) = seconds(robot.time);
     e_ = robot.energy * ones(1, length(x));
     u_map = zeros(1, length(x));
     u_search = zeros(1, length(x)); 
@@ -83,13 +82,15 @@ function u = fitness(x)
         end
         t_(n) = t_(max(1, n-1)) + T(prev_task_idx+1, x(n)+1);
         e_(n) = e_(max(1, n-1)) - E(prev_task_idx+1, x(n)+1);
-        T_mcdm = T(prev_task_idx+1, :);
-        t_mcdm_min = min(T_mcdm(T_mcdm > 0));
-        t_mcdm_max = max(T_mcdm(T_mcdm > 0));
+        t_mcdm_min = min(T_mcdm_vals);
+        t_mcdm_max = max(T_mcdm_vals);
         t_mcdm(n) = 1 - (T(prev_task_idx+1, x(n)+1) - t_mcdm_min)/(t_mcdm_max - t_mcdm_min);
+        if t_mcdm_max == t_mcdm_min
+            t_mcdm(n) = 1;
+        end
         % check constraints
         flag = check_constraints(preprocessing.constraints{set.task_idx}, ...
-                                 t_(n) + robot.time, ...
+                                 seconds(t_(n)), ...
                                  e_(n));
         if ~flag
             n = n - 1;
@@ -117,9 +118,6 @@ function u = fitness(x)
                            U_("search")); 
             u_map(n) = U_("map");
             u_search(n) = U_("search");
-            if n == 1
-                action_eval_ = action_eval;
-            end
         end
     end
 
@@ -135,41 +133,19 @@ function u = fitness(x)
                          {t_mcdm(1:n)}, ...
                          {t_(1:n)}, ...
                          {e_(1:n)}}, ...
-                         action_eval_];
+                         action_eval];
     end
     u = -u_;
 end
  
-%% create random unique combinations
-for i = 1:max_iter
-    pool = 1:height(sets);
-    candidate = zeros(1, prediction_horizon);
-    for j = 1:prediction_horizon
-        c_idx = randi(length(pool));
-        candidate(j) = pool(c_idx);
-        pool(c_idx) = [];
-    end
-    % order the candidates wrt time
-    T_cand = T(:, [1 candidate]);
-    T_cand = T_cand([1 candidate], :);
-    mask = true(1, prediction_horizon+1);
-    mask(1) = false;
-    X = zeros(1, prediction_horizon);
-    cur = 1;
-    for k = 2:prediction_horizon+1
-        remaining = find(mask);
-        [~, mi] = min(T_cand(cur, remaining));
-        mi = remaining(mi);
-        cur = mi;
-        mask(mi) = false;
-        X(k-1) = cur-1;
-    end
-    % calculate fitness
-    fitness(candidate(X));
-end
+%% calculate fitness values
+% for i = 1:height(sets)
+%     fitness(i);
+% end
+fitness(1);
 
-% get the best result
-if isempty(cache) || isempty(preprocessing.tasks)
+% check if the robot needs to return to the charger
+if isempty(cache)
     output.tasks = Task.empty;
     output.actions = string.empty;
     output.charge_flag = true;
@@ -178,22 +154,24 @@ if isempty(cache) || isempty(preprocessing.tasks)
     output.t_max = t_max;
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
 else
+    % find the best cache index
+    if any(ismissing(cache),'all')
+        error("NaN in cache")
+    end
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
-    cache.t(:) = cellfun(@(x) x + robot.time, cache.t(:), 'UniformOutput', false); 
     [max_u, max_row] = max(cache.u);
-    max_x = cache.tasks{max_row};
-    num_control = min(length(max_x), robot.policy.control_horizon);
-    actions = cache.actions{max_row};
-
-    output.tasks = preprocessing.tasks(max_x(1:num_control));
-    output.actions = actions(1:num_control);
+    output.tasks = preprocessing.tasks(cache.tasks{max_row});
+    output.actions = cache.actions{max_row};
     output.charge_flag = false;
     output.u = max_u;
     output.cache = cache;
     output.t_max = t_max;
     output.pp_task_idx = 1:length(preprocessing.tasks);
     output.action_eval = cache.action_eval(max_row);
+    output.cache_idx = max_row;
 end
 
 end
+

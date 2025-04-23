@@ -278,45 +278,51 @@ for j = 1:n
     end
 end
 
+% calculate tmcdm normalization
+T_mcdm = T_trans;
+T_vals = T_mcdm(:, 2:end);
+T_vals = T_vals(T_vals > 0);
+T_mcdm = (T_mcdm - min(T_vals)) / (max(T_vals) - min(T_vals));
+T_mcdm(isnan(T_mcdm)) = 0;
+T_mcdm(isinf(T_mcdm)) = 0;
+T_mcdm = 1 - T_mcdm;
+
 for j = 2:n
-    % Case 1: If delta_j = 1, enforce U_j = w_j1 * ((1 - sum_j Xij Tij / tmaxrow) - a_j) + w_j2 * a_j
-    % U_j + w_j1 * sum_j Xij Tij / tmaxrow = w_j1 - wj_1 * a_j + w_j2 * a_j
+    % Case 1: If delta_j = 1, enforce U_j = w_j1 * (sum_i Xij T_mcdm_ij - a_j) + w_j2 * a_j
+    % U_j - w_j1 * sum_i Xij T_mcdm_ij = - wj_1 * a_j + w_j2 * a_j
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(U(j)) = 1;  
-    model.genconind(end).a(X(:,j)) = w(j,1) * T_trans(:,j) ./ max(T_trans(:,j));
-    model.genconind(end).rhs = w(j, 1) - w(j,1) * a(j) + w(j,2) * a(j);  % Right-hand side
+    model.genconind(end).a(U(j)) = 1;   
+    model.genconind(end).a(X(:,j)) = -w(j,1) * T_mcdm(:,j);
+    model.genconind(end).rhs = - w(j,1) * a(j) + w(j,2) * a(j); 
     model.genconind(end).sense = '=';  % Enforce equation
-end
-for j = 2:n
-    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - (1 - sum_j Xij Tij / tmaxrow)) + w_j2 * (1 - sum_j Xij Tij / tmaxrow)
-    % U_j + (-w_j3  + wj2)* sum_j Xij Tij / tmaxrow = w_j3 * a_j - w_j3 + w_j2
+
+    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - sum_i Xij T_mcdm_ij) + w_j2 * sum_i Xij T_mcdm_ij
+    % U_j + (w_j3 - wj2)* sum_i Xij T_mcdm_ij = w_j3 * a_j
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 0
     model.genconind(end).a = zeros(1, num_vars);
     model.genconind(end).a(U(j)) = 1;  
-    model.genconind(end).a(X(:,j)) = (-w(j,3) + w(j,2)) * T_trans(:,j) ./ max(T_trans(:,j));
-    model.genconind(end).rhs = w(j,3) * a(j) - w(j,3) + w(j,2);  % Right-hand side
+    model.genconind(end).a(X(:,j)) = (w(j,3) - w(j,2)) * T_mcdm(:,j);
+    model.genconind(end).rhs = w(j,3) * a(j);  % Right-hand side
     model.genconind(end).sense = '=';  % Enforce equation
-end
 
-for j = 2:n
-    % deltaj = 1: 1 - sum_j Xij Tij / tmaxrow >= aj
+    % deltaj = 1: sum_i Xij T_mcdm_ij >= aj
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(X(:,j)) = -T_trans(:,j) ./ max(T_trans(:,j));
-    model.genconind(end).rhs = a(j) - 1;  % Right-hand side
+    model.genconind(end).a(X(:,j)) = T_mcdm(:,j);
+    model.genconind(end).rhs = a(j);  % Right-hand side
     model.genconind(end).sense = '>';  % Enforces T_j >= a_j when delta_j = 1
 
-    % deltaj = 0: aj >= 1 - sum_j Xij Tij / tmaxrow
+    % deltaj = 0: aj >= sum_i Xij T_mcdm_ij
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(X(:,j)) = T_trans(:,j) ./ max(T_trans(:,j));
-    model.genconind(end).rhs = 1 - a(j);  % Right-hand side
-    model.genconind(end).sense = '>'; % Enforces T_j < a_j when delta_j = 0
+    model.genconind(end).a(X(:,j)) = T_mcdm(:,j);
+    model.genconind(end).rhs = a(j);  % Right-hand side
+    model.genconind(end).sense = '<';  
 end
 
 MT = 2*tmax;

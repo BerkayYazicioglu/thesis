@@ -1,4 +1,4 @@
-function output = greedy_task_allocator(robot, preprocessing)
+function output = greedy_mcdm_task_allocator(robot, preprocessing)
 % preprocessing -> tasks, de, dt, outcomes (table with columns <nodes>, <values>, <actions>, <task_idx>)
 %
 % tasks -> ordered allocted tasks
@@ -19,6 +19,7 @@ if isempty(preprocessing.tasks)
     output.t_max = seconds(1);
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
     return;
 end
 
@@ -55,7 +56,8 @@ de(2:end) = preprocessing.de(sets.task_idx);
 T = D./robot.speed + repmat(dt, height(sets)+1, 1);
 E = D * robot.energy_per_m + repmat(de, height(sets)+1, 1);
 T(find(eye(height(sets)+1))) = 0;
-
+T_mcdm_vals = T(:, 2:end);
+T_mcdm_vals = T_mcdm_vals(T_mcdm_vals > 0);
 t_max = max(T(1, :));
 
 %% fitness function
@@ -64,6 +66,7 @@ function u = fitness(x)
     u_ = 0;
     action_eval = 0;
     t_ = zeros(1, length(x));
+    t_(1) = seconds(robot.time);
     e_ = robot.energy * ones(1, length(x));
     u_map = zeros(1, length(x));
     u_search = zeros(1, length(x)); 
@@ -79,13 +82,15 @@ function u = fitness(x)
         end
         t_(n) = t_(max(1, n-1)) + T(prev_task_idx+1, x(n)+1);
         e_(n) = e_(max(1, n-1)) - E(prev_task_idx+1, x(n)+1);
-        T_mcdm = T(prev_task_idx+1, :);
-        t_mcdm_min = min(T_mcdm(T_mcdm > 0));
-        t_mcdm_max = max(T_mcdm(T_mcdm > 0));
+        t_mcdm_min = min(T_mcdm_vals);
+        t_mcdm_max = max(T_mcdm_vals);
         t_mcdm(n) = 1 - (T(prev_task_idx+1, x(n)+1) - t_mcdm_min)/(t_mcdm_max - t_mcdm_min);
+        if t_mcdm_max == t_mcdm_min
+            t_mcdm(n) = 1;
+        end
         % check constraints
         flag = check_constraints(preprocessing.constraints{set.task_idx}, ...
-                                 t_(n) + robot.time, ...
+                                 seconds(t_(n)), ...
                                  e_(n));
         if ~flag
             n = n - 1;
@@ -148,8 +153,12 @@ if isempty(cache)
     output.t_max = t_max;
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
 else
     % find the best cache index
+    if any(ismissing(cache),'all')
+        error("NaN in cache")
+    end
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
     [max_u, max_row] = max(cache.u);
     output.tasks = preprocessing.tasks(cache.tasks{max_row});
@@ -160,6 +169,7 @@ else
     output.t_max = t_max;
     output.pp_task_idx = 1:length(preprocessing.tasks);
     output.action_eval = cache.action_eval(max_row);
+    output.cache_idx = max_row;
 end
 
 end

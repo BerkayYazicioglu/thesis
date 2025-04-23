@@ -19,6 +19,7 @@ if isempty(preprocessing.tasks)
     output.t_max = seconds(0);
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
     return
 end
 
@@ -33,6 +34,7 @@ if isempty(pp.tasks)
     output.t_max = seconds(0);
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
     return;
 end
 

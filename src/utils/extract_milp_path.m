@@ -1,6 +1,6 @@
-function path = extract_milp_path(result, variables)
+function path = extract_milp_path(x, variables)
 
-X = reshape(result.x(variables.X(:)), [variables.n variables.n]);
+X = reshape(x(variables.X(:)), [variables.n variables.n]);
 idx = 1;
 path = 1;
 while true

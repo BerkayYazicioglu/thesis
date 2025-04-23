@@ -3,13 +3,14 @@ function output = milp_lns(T_trans, E_trans, T_const, E_const, e0, w, a, u, tmax
 % =========================================================================
 max_s_incumbent = 15;
 max_s_lns = 5;
-size = 5;
+size = 6;
 max_stall = 5;
 max_iter = 10;
 % =========================================================================
 cache = table({}, {}, {}, {}, [], ...
     'VariableNames', {'x', 't', 'e', 'u', 'u_total'});
- 
+cache_idx = 0;
+
 % create an incumbent solution 
 [model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a, tmax, pred_horizon);
 params.TimeLimit = max_s_incumbent;
@@ -18,7 +19,7 @@ params.outputflag = 1;
 result = gurobi(model, params);
 if isfield(result, 'pool')
     for i = 1:length(result.pool)
-        x_idx = extract_milp_path(result, variables);
+        x_idx = extract_milp_path(result.pool(i).xn, variables);
         t_result = result.pool(i).xn(variables.T(:))';
         e_result = result.pool(i).xn(variables.E(:))';
         w_result = result.pool(i).xn(variables.W(:))';
@@ -28,6 +29,16 @@ if isfield(result, 'pool')
                          {w_result(x_idx)}, ...
                          result.pool(i).objval}];
     end
+    x_idx = extract_milp_path(result.x, variables);
+    t_result = result.x(variables.T(:))';
+    e_result = result.x(variables.E(:))';
+    w_result = result.x(variables.W(:))';
+    cache = [cache; {{x_idx}, ...
+                     {t_result(x_idx)}, ...
+                     {e_result(x_idx)}, ...
+                     {w_result(x_idx)}, ...
+                     result.objval}];
+    cache_idx = height(cache);
 else
     disp('gurobi couldnt find a feasible solution, generating initial conditions');
     result.x = milp_init_cond(T_trans, E_trans, T_const, E_const, e0, w, a, pred_horizon, u);
@@ -68,7 +79,7 @@ if pred_horizon > size
         new_result = gurobi(model, params);
         if isfield(new_result, 'pool')
             for i = 1:length(new_result.pool)
-                x_idx = extract_milp_path(new_result, variables);
+                x_idx = extract_milp_path(new_result.pool(i).xn, variables);
                 t_result = new_result.pool(i).xn(variables.T(:))';
                 e_result = new_result.pool(i).xn(variables.E(:))';
                 w_result = new_result.pool(i).xn(variables.W(:))';
@@ -78,11 +89,21 @@ if pred_horizon > size
                                  {w_result(x_idx)}, ...
                                  new_result.pool(i).objval}];
             end
+            x_idx = extract_milp_path(new_result.x, variables);
+            t_result = new_result.x(variables.T(:))';
+            e_result = new_result.x(variables.E(:))';
+            w_result = new_result.x(variables.W(:))';
+            cache = [cache; {{x_idx}, ...
+                             {t_result(x_idx)}, ...
+                             {e_result(x_idx)}, ...
+                             {w_result(x_idx)}, ...
+                             new_result.objval}];
         else
             new_result.objval = result.objval;
         end
         if new_result.objval > result.objval 
             result = new_result;
+            cache_idx = height(cache);
             stall = 1;
         else
             stall = stall + 1;
@@ -96,9 +117,11 @@ end
 
 %% Gather results
 output.cache = cache;
-output.x = extract_milp_path(result, variables);
+output.x = extract_milp_path(result.x, variables);
 output.t = result.x(variables.T(output.x))';
 output.e = result.x(variables.E(output.x))';
 output.u = result.x(variables.W(output.x))';
 output.u_total = result.objval;
+
+output.cache_idx = cache_idx;
 end

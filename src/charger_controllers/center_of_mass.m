@@ -2,7 +2,7 @@ function output = center_of_mass(charger)
 %CENTER_OF_MASS Controller for charger robot to steer towards to the valid
 % center of mass of remaining tasks
 
-goal_passivity = 3;
+goal_passivity = 10;
 w_min = 3;
 w_max = 5;
 

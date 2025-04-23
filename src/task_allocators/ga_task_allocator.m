@@ -27,6 +27,7 @@ if isempty(preprocessing.tasks)
     output.t_max = seconds(1);
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
     return;
 end
 
@@ -61,8 +62,18 @@ D = distance_matrix(robot, all_nodes, 2);
 T = seconds(D./robot.speed);
 
 % approximate the maximum time
-mean_dt = mean(preprocessing.dt(sets.task_idx));
-t_max = max(T(1,:) + mean_dt) * prediction_horizon; 
+all_nodes =  [robot.node preprocessing.tasks(sets.task_idx).node];
+D = distance_matrix(robot, all_nodes, 2);
+dt = zeros(1, height(sets) + 1);
+de = zeros(1, height(sets) + 1);
+dt(2:end) = seconds(preprocessing.dt(sets.task_idx));
+de(2:end) = preprocessing.de(sets.task_idx);
+T = D./robot.speed + repmat(dt, height(sets)+1, 1);
+E = D * robot.energy_per_m + repmat(de, height(sets)+1, 1);
+T(find(eye(height(sets)+1))) = 0;
+t_max = max(T(1, :));
+T_mcdm_vals = T(:, 2:end);
+T_mcdm_vals = T_mcdm_vals(T_mcdm_vals > 0);
 
 %% mutation function
 function children = mutation(parents, options, k, fitness, state, score, pop)
@@ -157,7 +168,8 @@ function u = fitness(x)
     actions_ = sets.actions(x);
     u_ = 0;
     action_eval_ = 0;
-    t_ = seconds(zeros(1, length(x)));
+    t_ = zeros(1, length(x));
+    t_(1) = seconds(robot.time);
     e_ = robot.energy * ones(1, length(x));
     u_map = zeros(1, length(x));
     u_search = zeros(1, length(x)); 
@@ -199,13 +211,17 @@ function u = fitness(x)
         if n > 1
             prev_task_idx = x(n-1);
         end
-        t_(n) = t_(max(1, n-1)) + T(prev_task_idx+1, x(n)+1) + preprocessing.dt(set.task_idx);
-        e_(n) = e_(max(1, n-1)) - D(prev_task_idx+1, x(n)+1) * robot.energy_per_m - preprocessing.de(set.task_idx);
-        t_mcdm(n) = 1 - (T(prev_task_idx+1, x(n)+1) + preprocessing.dt(set.task_idx)) / ...
-                        max(T(:, x(n)+1) + preprocessing.dt(set.task_idx));
+        t_(n) = t_(max(1, n-1)) + T(prev_task_idx+1, x(n)+1);
+        e_(n) = e_(max(1, n-1)) - E(prev_task_idx+1, x(n)+1);
+        t_mcdm_min = min(T_mcdm_vals);
+        t_mcdm_max = max(T_mcdm_vals);
+        t_mcdm(n) = 1 - (T(prev_task_idx+1, x(n)+1) - t_mcdm_min)/(t_mcdm_max - t_mcdm_min);
+        if t_mcdm_max == t_mcdm_min
+            t_mcdm(n) = 1;
+        end
         % check constraints
         flag = check_constraints(preprocessing.constraints{set.task_idx}, ...
-                                 t_(n) + robot.time, ...
+                                 seconds(t_(n)), ...
                                  e_(n));
         if ~flag
             flagged = [flagged; {x(1:n)}];
@@ -242,6 +258,16 @@ function u = fitness(x)
     % cache state
     if (flag || n > 0) & ...
         isempty(find(cellfun(@(x_) isequal(x_, x(1:n)), cache.sets), 1))
+        if any(ismissing(x)) || ...
+           any(ismissing(actions_)) || ...
+           any(ismissing(u_map)) || ...
+           any(ismissing(u_search)) || ...
+           any(ismissing(t_mcdm)) || ...
+           any(ismissing(t_)) || ...
+           any(ismissing(e_))
+            error("NaN in cache entry")
+        end
+
         cache = [cache; {{x(1:n)}, ...
                          {sets.task_idx(x(1:n))}, ...
                          {actions_(1:n)}, ...
@@ -313,7 +339,11 @@ if isempty(cache)
     output.t_max = t_max;
     output.pp_task_idx = [];
     output.action_eval = NaN;
+    output.cache_idx = 0;
 else
+    if any(ismissing(cache),'all')
+        error("NaN in cache")
+    end
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
     cache.t(:) = cellfun(@(x) x + robot.time, cache.t(:), 'UniformOutput', false); 
     [max_u, max_row] = max(cache.u);
@@ -329,6 +359,7 @@ else
     output.t_max = t_max;
     output.pp_task_idx = sets.task_idx(x);
     output.action_eval = cache.action_eval(max_row);
+    output.cache_idx = max_row;
 end
 
 end

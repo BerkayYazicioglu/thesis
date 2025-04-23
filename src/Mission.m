@@ -249,6 +249,8 @@ classdef Mission < handle
                         end
                     % search tasks
                     elseif type == "search"
+                        measured = robot.detector.measurements.nodes;
+                        
                         if eval(obj.settings.tasks.search.pi_complete)
                             completed(end+1) = i;
                         end
