@@ -7,7 +7,7 @@ world:
         t_min: '05:00:00'
         t_var: '00:30:00'
 gui:
-    verbose: 2
+    verbose: 1
     save_gif: false
     optimizer_types: [random, greedy_t, greedy_u, greedy_mcdm, hybrid, ga]
     preprocessing_types: [closest, shortest_path]
@@ -20,10 +20,11 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '08:00:00'
+    t_end: '04:00:00'
     PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: false
+    coordination_flag: true
     coordination_radius: 3
     q_init: [100,100]
     task_evaluation_model: task_evaluation.mat
@@ -55,7 +56,7 @@ mission:
             task_proximity: 10
     robots:
         ugv:
-            count: 1
+            count: 2
         uav: 
             count: 0
         crawler:

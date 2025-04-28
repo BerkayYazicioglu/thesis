@@ -30,6 +30,7 @@ classdef Robot < handle
         mission Mission;
 
         history timetable;
+        cache_idx;
         pp_outputs;
         return_schedule timetable;
         cache table; 
@@ -139,6 +140,15 @@ classdef Robot < handle
                 else
                     % a new plan can be made
                     obj.generate_schedule([results.pp.tasks.node], results.pp.actions, obj.time);
+                    % check for conflicts
+                    [conflicts, conflict_schedules] = detect_conflicts(obj.mission);
+                    if ~isempty(conflicts) && obj.mission.settings.coordination_flag
+                        t0 = tic;
+                        obj.msg = obj.msg + sprintf('\n................................');
+                        results.coop = cooperation(obj.mission, conflict_schedules, conflicts);
+                        obj.msg = obj.msg +  sprintf('\n%-10s | %-30s | %.4f', obj.id, 'cooperation', toc(t0));
+                        obj.msg = obj.msg + sprintf('\n--------------------------------');
+                    end
                     obj.state = "running";
                 end
 
@@ -182,10 +192,12 @@ classdef Robot < handle
                         obj.generate_schedule([results.pp.tasks.node], results.pp.actions, obj.time);
                         % check for conflicts
                         [conflicts, conflict_schedules] = detect_conflicts(obj.mission);
-                        if ~isempty(conflicts)
+                        if ~isempty(conflicts) && obj.mission.settings.coordination_flag
                             t0 = tic;
+                            obj.msg = obj.msg + sprintf('\n................................');
                             results.coop = cooperation(obj.mission, conflict_schedules, conflicts);
                             obj.msg = obj.msg +  sprintf('\n%-10s | %-30s | %.4f', obj.id, 'cooperation', toc(t0));
+                            obj.msg = obj.msg + sprintf('\n--------------------------------');
                         end
                     end
                 end
@@ -248,9 +260,11 @@ classdef Robot < handle
 
             % results
             obj.cache = opt_results.cache; 
+            obj.cache_idx = opt_results.cache_idx;
             opt_results.robot = obj;
             obj.control_step = 0;
             obj.considered_tasks = [pp.tasks(opt_results.pp_task_idx).node];
+           % obj.pi = 
         end
 
 
@@ -270,14 +284,17 @@ classdef Robot < handle
                 end
                 % task action
                 action = actions(i).split('_');
+                last_time = last_time + seconds(0.1);
                 if action(1) == "map"
+                    obj.schedule(last_time, :) = {nodes(i+1), actions(i), last_energy};
                     last_time = last_time + obj.mapper.t_s;
                     last_energy = last_energy - obj.mapper.d_energy;
                 elseif action(1) == "search"
+                    obj.schedule(last_time, :) = {nodes(i+1), actions(i), last_energy};
                     last_time = last_time + obj.detector.t_s;
                     last_energy = last_energy - obj.detector.d_energy;
                 end
-                obj.schedule(last_time, :) = {nodes(i+1), actions(i), last_energy};
+                obj.schedule(last_time, :) = {nodes(i+1), "none", last_energy};
             end
             % generate the return schedule from the last action
             charger_nodes = [obj.mission.charger.node;

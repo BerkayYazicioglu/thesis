@@ -20,6 +20,9 @@ result = gurobi(model, params);
 if isfield(result, 'pool')
     for i = 1:length(result.pool)
         x_idx = extract_milp_path(result.pool(i).xn, variables);
+        if length(x_idx) <= 1
+            continue
+        end
         t_result = result.pool(i).xn(variables.T(:))';
         e_result = result.pool(i).xn(variables.E(:))';
         w_result = result.pool(i).xn(variables.W(:))';
@@ -30,14 +33,16 @@ if isfield(result, 'pool')
                          result.pool(i).objval}];
     end
     x_idx = extract_milp_path(result.x, variables);
-    t_result = result.x(variables.T(:))';
-    e_result = result.x(variables.E(:))';
-    w_result = result.x(variables.W(:))';
-    cache = [cache; {{x_idx}, ...
-                     {t_result(x_idx)}, ...
-                     {e_result(x_idx)}, ...
-                     {w_result(x_idx)}, ...
-                     result.objval}];
+    if length(x_idx) > 1
+        t_result = result.x(variables.T(:))';
+        e_result = result.x(variables.E(:))';
+        w_result = result.x(variables.W(:))';
+        cache = [cache; {{x_idx}, ...
+                         {t_result(x_idx)}, ...
+                         {e_result(x_idx)}, ...
+                         {w_result(x_idx)}, ...
+                         result.objval}];
+    end
     cache_idx = height(cache);
 else
     disp('gurobi couldnt find a feasible solution, generating initial conditions');
@@ -80,6 +85,9 @@ if pred_horizon > size
         if isfield(new_result, 'pool')
             for i = 1:length(new_result.pool)
                 x_idx = extract_milp_path(new_result.pool(i).xn, variables);
+                if length(x_idx) <= 1
+                    continue
+                end
                 t_result = new_result.pool(i).xn(variables.T(:))';
                 e_result = new_result.pool(i).xn(variables.E(:))';
                 w_result = new_result.pool(i).xn(variables.W(:))';
@@ -89,15 +97,17 @@ if pred_horizon > size
                                  {w_result(x_idx)}, ...
                                  new_result.pool(i).objval}];
             end
-            x_idx = extract_milp_path(new_result.x, variables);
-            t_result = new_result.x(variables.T(:))';
-            e_result = new_result.x(variables.E(:))';
-            w_result = new_result.x(variables.W(:))';
-            cache = [cache; {{x_idx}, ...
-                             {t_result(x_idx)}, ...
-                             {e_result(x_idx)}, ...
-                             {w_result(x_idx)}, ...
-                             new_result.objval}];
+            if length(x_idx) > 1
+                x_idx = extract_milp_path(new_result.x, variables);
+                t_result = new_result.x(variables.T(:))';
+                e_result = new_result.x(variables.E(:))';
+                w_result = new_result.x(variables.W(:))';
+                cache = [cache; {{x_idx}, ...
+                                 {t_result(x_idx)}, ...
+                                 {e_result(x_idx)}, ...
+                                 {w_result(x_idx)}, ...
+                                 new_result.objval}];
+            end
         else
             new_result.objval = result.objval;
         end

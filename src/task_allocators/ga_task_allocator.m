@@ -345,7 +345,6 @@ else
         error("NaN in cache")
     end
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
-    cache.t(:) = cellfun(@(x) x + robot.time, cache.t(:), 'UniformOutput', false); 
     [max_u, max_row] = max(cache.u);
     max_x = cache.tasks{max_row};
     num_control = min(length(max_x), robot.policy.control_horizon);

@@ -1,23 +1,33 @@
-max_step: 100
-height: 100
-speed: 10
+max_step: 2
+height: 1
+speed: 1
 crit_energy: 0
 energy_per_m: 0.1
-charge_per_s: 0.2
+charge_per_s: 99
 color: white
 policy:
     preprocessing: closest
-    num_tasks: 25
-    optimizer: brute_force
+    num_tasks: 200
+    optimizer: ga
     control_horizon: 1
-    prediction_horizon: 10
+    prediction_horizon: 6
 capabilities:
-    mapper:
-        type: map
-        capability: 0.7
-        model: map_capability.fis
+    detector:
+        type: search
+        capability: 0.5
+        model: search_capability.mat
         t_s: '03:00'
         d_energy: 10
+        features: [victim]
+        max_range: 4
+        arc: 360
+        angles: [0]
+    mapper:
+        type: map
+        capability: 1
+        model: map_capability.fis
+        t_s: '00:30'
+        d_energy: 5
         features: [terrain, destruction, population]
         max_range: 6
         arc: 360
