@@ -1,11 +1,9 @@
-function single_optimization_analysis(data_dir, gui, robot_id)
+function single_optimization_analysis(mission, gui, robot_id)
 
     % ========= params ==========
     interval = 5 * seconds(60); % minutes
     x_label_interval = 30 * seconds(60); % minutes
     % ===========================
-    
-    mission = load(data_dir + "/mission.mat").mission;
     
     panel = gui.RightPanel;
 
@@ -22,21 +20,29 @@ function single_optimization_analysis(data_dir, gui, robot_id)
     robot = mission.robots([mission.robots.id] == robot_id);
     % iterate through robot timesteps
     ts = robot.pp_outputs.keys;
-    t_data = [];
-    u_map_data = [];
-    u_search_data = []; 
-    groups = [];
+    data_types = ["t" "map" "search"];
+    data = struct;
+    for i = 1:length(data_types)
+        data.(data_types(i)).mean = [];
+        data.(data_types(i)).p1 = [];
+        data.(data_types(i)).p2 = [];
+        data.(data_types(i)).t = [];
+    end
     for i = 1:length(ts)
         pp = robot.pp_outputs(ts(i));
         if ~pp.charge_flag
-            n = length([pp.cache.t{:}]);
-            rel_t = [pp.cache.t{:}]' - ts(i);
-            t_data = [t_data; [pp.cache.t_mcdm{:}]'];
-            u_map_data = [u_map_data; [pp.cache.u_map{:}]'];
-            u_search_data = [u_search_data; [pp.cache.u_search{:}]'];
+            ts_data = {[pp.cache.t_mcdm{:}]' ,...
+                       [pp.cache.u_map{:}]' ,...
+                       [pp.cache.u_search{:}]'};
             % calculate which interval the data falls under
-            t_group = floor(ts(i) / interval);
-            groups = [groups; repmat(t_group * seconds(interval), n, 1)];
+            for j = 1:length(data_types)
+                data.(data_types(j)).mean = [data.(data_types(j)).mean; mean(ts_data{j})];
+                p1 = prctile(ts_data{j}, 5);
+                p2 = prctile(ts_data{j}, 95);
+                data.(data_types(j)).p1 = [data.(data_types(j)).p1; p1];
+                data.(data_types(j)).p2 = [data.(data_types(j)).p2; p2];
+                data.(data_types(j)).t = [data.(data_types(j)).t; seconds(ts(i))];
+            end
         end
     end
 
@@ -52,26 +58,37 @@ function single_optimization_analysis(data_dir, gui, robot_id)
     title(ax, 'MCDM utility outputs');
 
     % plot sub utility groups
-    pos = unique(groups);
     ax = nexttile(layout);
-    boxplot(ax, t_data, groups, ...
-        'PlotStyle', 'compact', ...
-        'Positions', pos);
+    hold(ax, 'on');
+    fill(ax, [data.t.t; flipud(data.t.t)],  ...
+             [data.t.p2; flipud(data.t.p1)], ...
+             [0.8 0.8 1], ...
+             'EdgeColor','none', 'FaceAlpha', 0.6);
+    plot(ax, data.t.t, data.t.mean, 'b-', 'LineWidth', 1.4);
     xticks(ax, []);
     set(ax, 'XTickLabel', {' '});
     title(ax, 'normalized time utility');
+    hold(ax, 'off');
     
     ax = nexttile(layout);
-    boxplot(ax, u_map_data, groups, ...
-        'PlotStyle', 'compact', ...
-        'Positions', pos);
+    hold(ax, 'on');
+    fill(ax, [data.map.t; flipud(data.map.t)],  ...
+             [data.map.p2; flipud(data.map.p1)], ...
+             [0.8 0.8 1], ...
+             'EdgeColor','none', 'FaceAlpha', 0.6);
+    plot(ax, data.map.t, data.map.mean, 'b-', 'LineWidth', 1.4);
+    xticks(ax, []);
     set(ax, 'XTickLabel', {' '});
-    title(ax, 'normalized map utility');
+    title(ax, 'normalized map action utility');
+    hold(ax, 'off');
 
     ax = nexttile(layout);
-    boxplot(ax, u_search_data, groups, ...
-        'PlotStyle', 'compact', ...
-        'Positions', pos);
+    hold(ax, 'on');
+    fill(ax, [data.search.t; flipud(data.search.t)],  ...
+             [data.search.p2; flipud(data.search.p1)], ...
+             [0.8 0.8 1], ...
+             'EdgeColor','none', 'FaceAlpha', 0.6);
+    plot(ax, data.search.t, data.search.mean, 'b-', 'LineWidth', 1.4);
     xticks(ax, seconds(new_ticks));
     xticklabels(ax, string(new_ticks));
     xtickangle(ax, 90);
@@ -79,6 +96,7 @@ function single_optimization_analysis(data_dir, gui, robot_id)
     title(ax, 'normalized search utility');
     xlabel(layout, 'time (hh:mm)');
     title(layout, "optimization analysis | " + robot_id, 'Interpreter', 'none');
+    hold(ax, 'off');
 
     % bind silder
     gui.range_select.ValueChangedFcn = @slider_callback;

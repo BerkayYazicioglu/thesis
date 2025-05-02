@@ -7,8 +7,8 @@ function output = milp_lns_task_allocator(robot, preprocessing)
 % u -> utility of the selected allocation
 % cache -> optimization cache
 
-cache = table({}, {}, [], {}, {}, {}, {}, [], ...
-    'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e', 'action_eval'});
+cache = table({}, {}, [], {}, {}, {}, {}, {}, [], ...
+    'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't_mcdm', 't', 'e', 'action_eval'});
 
 if isempty(preprocessing.tasks)
     output.tasks = Task.empty;
@@ -146,6 +146,14 @@ milp_output = milp_lns(T_trans, ...
 
 
 %% compile results
+T_mcdm = T_trans;
+T_vals = T_mcdm(:, 2:end);
+T_vals = T_vals(T_vals > 0);
+T_mcdm = (T_mcdm - min(T_vals)) / (max(T_vals) - min(T_vals));
+T_mcdm(isnan(T_mcdm)) = 0;
+T_mcdm(isinf(T_mcdm)) = 0;
+T_mcdm = 1 - T_mcdm;
+
 for i = 1:height(milp_output.cache)
     row = milp_output.cache(i, :);
     x_sol = row.x{1}(2:end) - 1;
@@ -161,6 +169,10 @@ for i = 1:height(milp_output.cache)
         u_sol([preprocessing.tasks(tasks_sol).type] == "map");
     u_search_sol([preprocessing.tasks(tasks_sol).type] == "search") = ...
         u_sol([preprocessing.tasks(tasks_sol).type] == "search");
+    t_mcdm_sol = [];
+    for j = 1:length(row.x{1})-1
+        t_mcdm_sol(end+1) = T_mcdm(row.x{1}(j), row.x{1}(j+1));
+    end
     
     if any(ismissing(actions_sol)) || ...
        any(ismissing(u_map_sol)) || ...
@@ -176,8 +188,9 @@ for i = 1:height(milp_output.cache)
                      row.u_total, ...
                      {u_map_sol(:)'}, ...
                      {u_search_sol(:)'}, ...
+                     {t_mcdm_sol(:)'}}, ...
                      {t_sol(:)'}, ...
-                     {e_sol(:)'}}, ...
+                     {e_sol(:)'}, ...
                      row.u_total];
 end
 len_sol = sum(milp_output.u > 0);

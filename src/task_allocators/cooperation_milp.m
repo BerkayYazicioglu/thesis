@@ -376,4 +376,9 @@ params.PoolSolutions = 1000;
 params.NumericFocus = 1; 
 params.MIPFocus = 1;
 
+
+% params.TimeLimit = 15;
+% params.MIPFocus = 1; 
+% params.outputflag = 1;
+% result = gurobi(model, params);
 end

@@ -24,10 +24,11 @@ function output = postprocess_victim(missions)
     end
     count_data(:, 1) = [];
     count_data(1, :) = array2timetable(zeros(1, size(count_data, 2)), 'RowTimes', seconds(0));
-    count_data = fillmissing(count_data, 'previous'); 
+    [~, idx] = unique(count_data.Time);
+    count_data = fillmissing(count_data(idx,:), 'previous');
     count_data.mean = mean(count_data{:, :}, 2);
-    count_data.max = max(count_data{:, :}, [], 2);
-    count_data.min = min(count_data{:, :}, [], 2);
+    count_data.max = prctile(count_data{:,:}, 75, 2);
+    count_data.min = prctile(count_data{:,:}, 25, 2);
     health_data = sortrows(health_data, 'Time');
 
     output.count = timetable(count_data.Time, count_data.mean, count_data.max, count_data.min, ...

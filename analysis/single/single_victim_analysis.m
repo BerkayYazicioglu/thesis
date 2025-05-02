@@ -1,13 +1,9 @@
-function single_victim_analysis(data_dir, gui, ~)
+function single_victim_analysis(mission, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
     markers = dictionary("detected", "pentagram", "revisited", ".");
-
-    addpath('src\gui\');
     % ===========================
-
-    mission = load(data_dir + "/mission.mat").mission;
     
     panel = gui.RightPanel;
     gui.single_plot_options.Items = "none";

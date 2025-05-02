@@ -165,7 +165,7 @@ row = zeros(1, num_vars);
 row(V(:)) = 1;
 A = [A; row];
 rhs = [rhs; pred_horizon + 1];
-sense = [sense; '='];
+sense = [sense; '<'];
 
 % 2) sum(X(:)) = sum(V(:)) - 1
 row = zeros(1, num_vars);
@@ -248,6 +248,15 @@ for i = 1:n
     model.genconind(end).binval = 0;  % Activate when Vi = 0
     model.genconind(end).a = zeros(1, num_vars);
     model.genconind(end).a(W(i)) = 1;  
+    model.genconind(end).rhs = 0;  % Right-hand side
+    model.genconind(end).sense = '=';  
+
+   % Vi = 1: Wi = Ui
+    model.genconind(end+1).binvar = V(i);  % Binary variable
+    model.genconind(end).binval = 1;  % Activate when ksi_i = 1
+    model.genconind(end).a = zeros(1, num_vars);
+    model.genconind(end).a(W(i)) = 1;  
+    model.genconind(end).a(U(i)) = -1;
     model.genconind(end).rhs = 0;  % Right-hand side
     model.genconind(end).sense = '=';  
 end
@@ -364,22 +373,30 @@ for i = 1:n
     model.genconind(end).rhs = 0;  % Right-hand side
     model.genconind(end).sense = '=';  
 
-    % ksi_i = 1: Wi = Ui
+    % ksi_i = 0: Vi = 0 
     model.genconind(end+1).binvar = ksi(i);  % Binary variable
-    model.genconind(end).binval = 1;  % Activate when ksi_i = 1
+    model.genconind(end).binval = 0;  
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(W(i)) = 1;  
-    model.genconind(end).a(U(i)) = -1;
+    model.genconind(end).a(V(i)) = 1;  
     model.genconind(end).rhs = 0;  % Right-hand side
     model.genconind(end).sense = '=';  
 
-    % ksi_i = 0: Wi == 0
-    model.genconind(end+1).binvar = ksi(i);  % Binary variable
-    model.genconind(end).binval = 0;  % Activate when ksi_i = 0
-    model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(W(i)) = 1;  
-    model.genconind(end).rhs = 0;  % Right-hand side
-    model.genconind(end).sense = '=';  
+    % % ksi_i = 1: Wi = Ui
+    % model.genconind(end+1).binvar = ksi(i);  % Binary variable
+    % model.genconind(end).binval = 1;  % Activate when ksi_i = 1
+    % model.genconind(end).a = zeros(1, num_vars);
+    % model.genconind(end).a(W(i)) = 1;  
+    % model.genconind(end).a(U(i)) = -1;
+    % model.genconind(end).rhs = 0;  % Right-hand side
+    % model.genconind(end).sense = '=';  
+    % 
+    % % ksi_i = 0: Wi == 0
+    % model.genconind(end+1).binvar = ksi(i);  % Binary variable
+    % model.genconind(end).binval = 0;  % Activate when ksi_i = 0
+    % model.genconind(end).a = zeros(1, num_vars);
+    % model.genconind(end).a(W(i)) = 1;  
+    % model.genconind(end).rhs = 0;  % Right-hand side
+    % model.genconind(end).sense = '=';  
 end
 
 % Convert to Sparse Matrix

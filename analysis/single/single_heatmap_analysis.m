@@ -1,4 +1,4 @@
-function single_heatmap_analysis(data_dir, gui, robot_id)
+function single_heatmap_analysis(mission, gui, robot_id)
 
     % ========= params ==========
     markers = dictionary("victim", "diamond", ...
@@ -7,10 +7,7 @@ function single_heatmap_analysis(data_dir, gui, robot_id)
     c_victim = [1 0 0];
     c_victim_found = [0 0.8 0.2];
 
-    addpath('src\gui\');
     % ===========================
-    
-    mission = load(data_dir + "/mission.mat").mission;
     
     panel = gui.RightPanel;
     
