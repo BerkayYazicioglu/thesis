@@ -1,16 +1,13 @@
-function multi_area_analysis(gui, ~)
+function multi_area_analysis(datasets, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
-    dataset_dir = "analysis/postprocessing/datasets/";
-    alpha = 0.15;
+    dataset_dir = "data/";
     % ===========================
 
     panel = gui.RightPanel;
-    gui.single_plot_options.Items = "none";
-    gui.single_plot_options.Value = "none";
     
-    experiments = gui.dataset_select.Items;
+    experiments = datasets;
     init_conds = gui.multi_group_select.Value;
 
     colors = distinguishable_colors(length(experiments), 'white');
@@ -23,21 +20,11 @@ function multi_area_analysis(gui, ~)
 
         hold(ax, 'on');
 
-        % mean
-        plot(ax, data.Time, data.mean, ...
-            'Color', colors(j, :));
-        % max
-        plot(ax, data.Time, data.max, ...
-            '-', 'Color', [colors(j, :), alpha]);
-        % min
-        plot(ax, data.Time, data.min, ...
-            '-', 'Color', [colors(j, :), alpha]);
-        % region
-        p = patch(ax, [data.Time' fliplr(data.Time')], ...
-            [data.max' fliplr(data.min')], ...
-            colors(j, :));
-        set(p, 'FaceAlpha', alpha);
-        set(p, 'EdgeColor', 'none');
+        % fill(ax, [data.Time; flipud(data.Time)],  ...
+        %      [data.max; flipud(data.min)], ...
+        %      [0.8 0.8 1], ...
+        %      'FaceColor', colors(j,:), 'EdgeColor','none', 'FaceAlpha', 0.2);
+        plot(ax, data.Time, data.mean, '-', 'Color', colors(j,:), 'LineWidth', 1.4);
 
         hold(ax, 'off');
     end
