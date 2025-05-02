@@ -11,9 +11,10 @@ classdef Mapper < handle
         angles (1,:) double {mustBeVector}; % (degrees)
         arc double {mustBePositive}; % (degrees) 
         capability double {mustBeInRange(capability,0,1)}; 
-        model sugfis;
+        %model sugfis;
 
         FoV cell % area of effect per angle (x, y, distance)
+        FoV_area double; % max fov area 
         measurements table = table; % container for the current field of vision
         robot Robot;
     end
@@ -41,7 +42,7 @@ classdef Mapper < handle
             obj.arc = deg2rad(params.arc);
             obj.type = params.type;
             obj.capability = params.capability;
-            obj.model = readfis(params.model);
+            %obj.model = readfis(params.model);
 
             obj.robot = robot;
 
@@ -76,6 +77,7 @@ classdef Mapper < handle
                 end
                 obj.FoV{i} = points;
             end
+            obj.FoV_area = max(cellfun(@length, obj.FoV));
         end
 
         %% Measurement function
@@ -134,6 +136,12 @@ classdef Mapper < handle
                     idx(end+1) = i;
                 end
             end
+            % account for the special ids
+            specials = intersect(obj.robot.world.special_ids, field);
+            if ~isempty(specials)
+                special_idx = find(ismember(field, specials));
+                idx = unique([idx special_idx']);
+            end
         end
 
         %% Get the maximal field of effect from a given node
@@ -159,7 +167,6 @@ classdef Mapper < handle
             actions = [];
             values = [];
             distances = [];
-            fov_areas = [];
             robot_type = obj.robot.id.split('_');
             for i = 1:length(obj.angles)
                 action = task.type + "_" + string(i);
@@ -178,15 +185,14 @@ classdef Mapper < handle
                 nodes = [nodes; field];
                 distances = [distances; distance];
                 actions = [actions; repmat(action, length(field), 1)];
-                fov_areas = [fov_areas; repmat(fov_area, length(field), 1)];
             end
-            if ~isempty(nodes)
-                cap = repmat(obj.capability, size(distances));
-                values = evalfis(obj.model, [distances/obj.max_range cap]);
-                % normalize values
-                values = values ./ fov_areas;
-            end
-            outcomes = table(nodes, values, actions);
+            % if ~isempty(nodes)
+            %     cap = repmat(obj.capability, size(distances));
+            %     values = evalfis(obj.model, [distances/obj.max_range cap]);
+            %     % normalize values
+            %     values = values ./ obj.FoV_area;
+            % end
+            outcomes = table(nodes, distances, actions);
         end
 
         %% Measurement probability function

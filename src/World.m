@@ -9,6 +9,7 @@ classdef World < handle
         victims (1,:) Victim = Victim.empty;
         environment graph = graph; % 8-connected graph where the robots move
         X, Y (:, :) double {mustBeReal, mustBeNonNan}; % meshgrid for x,y coordinates (m)
+        special_ids;
     end
     
     methods
@@ -70,6 +71,9 @@ classdef World < handle
                 obj.environment.Nodes.victim(str2double(node)) = ...
                     obj.environment.Nodes.victim(str2double(node)) + 1;
             end
+
+            obj.special_ids = string.empty;
+            obj.add_gates();
         end
 
         %% Get node ID from grid index
@@ -86,6 +90,54 @@ classdef World < handle
         %% Get the environment size
         function s = size(obj)
             s = [size(obj.Y,2) size(obj.X,1)];
+        end
+
+        %% Add gates
+        function add_gates(obj)
+            terrain = obj.environment.Nodes.terrain;
+            X = obj.X./500 * 99 + 1;
+            Y = obj.Y./500 * 99 + 1;
+
+            % zone 1
+            paths = {{[15 23], [15 20], [13 15]}, ...
+                     {[15 23], [15 20], [19 19]}, ...
+                     {[8 31], [20 31]}, ...
+                     {[20 42], [19 47]}, ...
+                     {[20 50], [24 48]}, ...
+                     {[25 51], [19 48]}, ...
+                     {[18 49], [11 49], [18 49]}, ...
+                     {[10 69], [17 68]}, ...
+                     {[5 64], [13 62]}, ...
+                     {[42 24], [35, 18]}, ...
+                     {[24 13], [33 12]}, ...
+                     {[61 60], [66 75]}, ...
+                     {[60 76], [63 90]}, ...
+                     {[64 43], [69 38]}, ...
+                     {[70 55], [64 51]}, ...
+                     {[69 27], [73 21]}, ...
+                     {[86 96], [86 86], [80 86]}, ...
+                     {[83 79], [94 86], [94 95]}, ...
+                     {[94 86], [99 87]}, ...
+                     };
+
+            for i = 1:length(paths)
+                p = paths{i};
+                id = obj.get_id([p{1}(1) p{end}(1)], [p{1}(2) p{end}(2)]);
+                idx = obj.environment.findnode(id);
+                z0 = terrain(idx);
+                [x, y] = bresenham(p{1}(1), p{1}(2), p{2}(1), p{2}(2));
+                for j = 3:length(p)
+                    [x_n, y_n] = bresenham(p{j-1}(1), p{j-1}(2), p{j}(1), p{j}(2));
+                    x = [x; x_n(2:end)];
+                    y = [y; y_n(2:end)];
+                end
+                id = obj.get_id(x, y);
+                idx = obj.environment.findnode(id);
+                z = linspace(z0(1), z0(2), numel(idx));
+                terrain(idx) = z; 
+                obj.special_ids = [obj.special_ids(:); id];  
+            end
+            obj.environment.Nodes.terrain = terrain;
         end
 
         %% Initialize GUI handles

@@ -8,6 +8,8 @@ classdef Task < handle
         t_init duration;
         type string; 
         node string;
+        priority double;
+
 
         % constructed fields
         cache table;
@@ -17,7 +19,7 @@ classdef Task < handle
     
     methods
         %% Constructor
-        function obj = Task(params, t_init, node, robots)
+        function obj = Task(params, t_init, node, priority, robots)
             %TASK params (struct)->
             %   pi_init     : atomic proposition defining task initialization
             %   pi_complete : atomic proposition defining task completion
@@ -32,6 +34,7 @@ classdef Task < handle
             obj.type = params.type;
             obj.t_init = t_init;
             obj.node = node;
+            obj.priority = priority;
             
             obj.cache = table('Size', [0 3], ...
                               'VariableTypes', {'string', 'string', 'string'}, ...

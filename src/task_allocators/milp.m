@@ -1,4 +1,4 @@
-function [model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a)
+function [model, params, variables] = milp(T_trans, E_trans, T_const, E_const, e0, w, a, tmax, pred_horizon)
 %% Initialize Gurobi Model
 n = numel(a);
 n_const = size(T_const, 2);
@@ -59,15 +59,6 @@ for j = 1:n
     delta(j) = numel(model.varnames);
 end
 
-% P_i: integer rank variables for the MTZ constraints
-P = zeros(n,1);
-for i = 1:n
-    var_name = sprintf('P_%d', i);
-    model.vtype = [model.vtype, 'I'];  % integer
-    model.varnames{end+1} = var_name;
-    P(i) = numel(model.varnames);
-end
-
 % Zij: candidate i satisfies charging constraint j
 Z = zeros(n, n_const);
 for i = 1:n
@@ -97,6 +88,15 @@ for i = 1:n
     W(i) = numel(model.varnames);
 end
 
+% V_i: candidate i is visited or not
+V = zeros(n,1);
+for i = 1:n
+    var_name = sprintf('V_%d', i);
+    model.vtype = [model.vtype, 'B'];  
+    model.varnames{end+1} = var_name;
+    V(i) = numel(model.varnames);
+end
+
 %% Set Variable Bounds
 num_vars = numel(model.varnames);
 model.lb = -inf(num_vars, 1);
@@ -108,75 +108,88 @@ model.ub(X(:)) = 1;
 
 % Bounds for Continuous Variables
 model.lb(T(:)) = 0; % Execution times are non-negative
-model.ub(T(:)) = 1;
+model.ub(T(:)) = tmax;
 model.lb(T(1)) = 0;
 model.ub(T(1)) = 0;
 
-model.lb(E(:)) = -1000;
+model.lb(E(:)) = -100;
 model.ub(E(:)) = 100;
 model.lb(E(1)) = e0;
 model.ub(E(1)) = e0;
 
 model.lb(U(:)) = 0;  % U_j must be non-negative
-model.ub(U(:)) = inf; % No upper bound on U_j
+model.ub(U(:)) = 100; % No upper bound on U_j
+model.lb(W(:)) = 0;  % U_j must be non-negative
+model.ub(W(:)) = 100; % No upper bound on U_j
 model.ub(U(1)) = 0; 
+model.ub(W(1)) = 0; 
 model.lb(delta(:)) = 0; % Binary variable lower bound
 model.ub(delta(:)) = 1; % Binary variable upper bound
 model.lb(delta(1)) = 0; 
 
-model.lb(P(:)) = 1;   % rank from 1..n
-model.ub(P(:)) = n;
-model.lb(P(1)) = 1;
-model.ub(P(1)) = 1;
-
 model.lb(Z(:)) = 0;
 model.ub(Z(:)) = 1;
+
+model.lb(ksi(:)) = 0;
+model.ub(ksi(:)) = 1;
+
+model.lb(V(:)) = 0;
+model.ub(V(:)) = 1;
+model.lb(V(1)) = 1; % candidate 1 is always selected
 
 %% Constructing model.A (Constraints)
 A = [];
 rhs = [];
 sense = '';
 
-% Each candidate has at most one outgoing transition
-for i = 1:n
-    row = zeros(1, num_vars);
-    row(X(i, :)) = 1;
-    A = [A; row];
-    rhs = [rhs; 1];
-    sense = [sense; '<'];
-end
+% % Each candidate has at most one outgoing transition
+% for i = 1:n
+%     row = zeros(1, num_vars);
+%     row(X(i, :)) = 1;
+%     A = [A; row];
+%     rhs = [rhs; 1];
+%     sense = [sense; '<'];
+% end
+% 
+% % Each candidate has at most one incoming transition
+% for j = 1:n
+%     row = zeros(1, num_vars);
+%     row(X(:, j)) = 1;
+%     A = [A; row];
+%     rhs = [rhs; 1];
+%     sense = [sense; '<'];
+% end
 
-% Each candidate has at most one incoming transition
-for j = 1:n
-    row = zeros(1, num_vars);
-    row(X(:, j)) = 1;
-    A = [A; row];
-    rhs = [rhs; 1];
-    sense = [sense; '<'];
-end
-
-% sum Xij = n - 1
+% 1) Exactly pred_horizon + 1 visited
 row = zeros(1, num_vars);
-row(X(:)) = 1;  % Sum over all transitions
+row(V(:)) = 1;
 A = [A; row];
-rhs = [rhs; n - 1];
+rhs = [rhs; pred_horizon + 1];
+sense = [sense; '<'];
+
+% 2) sum(X(:)) = sum(V(:)) - 1
+row = zeros(1, num_vars);
+row(X(:)) = 1;
+row(V(:)) = -1;
+A = [A; row];
+rhs = [rhs; -1];
 sense = [sense; '='];
 
-% Candidate 1 must not have an incoming transition
-row = zeros(1, num_vars);
-row(X(:,1)) = 1;  % Sum over all transitions into candidate 1
+% 3) Candidate 1 has no incoming transitions: sum(X(:,1))=0
+row = zeros(1,num_vars);
+row(X(:,1)) = 1;
 A = [A; row];
 rhs = [rhs; 0];
 sense = [sense; '='];
 
-% Candidate 1 must have exactly one outgoing transition
-row = zeros(1, num_vars);
-row(X(1,:)) = 1;  % Sum over all transitions from candidate 1
+% 4) Candidate 1 has exactly one outgoing: sum(X(1,:))=1
+row = zeros(1,num_vars);
+row(X(1,:)) = 1;
 A = [A; row];
 rhs = [rhs; 1];
 sense = [sense; '='];
 
-% no self transitions: Xij = 0 for i = j
+% 5) no self transitions: Xij = 0 for i = j
 row = zeros(1, num_vars);
 for i = 1:n
     row(X(i,i)) = 1;  % Sum over all transitions into candidate 1
@@ -185,30 +198,67 @@ A = [A; row];
 rhs = [rhs; 0];
 sense = [sense; '='];
 
-% 8) MTZ Rank Constraints: p_j = p_i + 1 if X(i,j)=1
-M_rank = n;  % or (n-1)
+% allow a transition if only both i and j are visited
 for i = 1:n
     for j = 1:n
         if i ~= j
-            % p_j - p_i >= 1 - M_rank*(1 - X(i,j))
+            % Xij <= Vi
             row = zeros(1, num_vars);
-            row(P(j))= +1;
-            row(P(i))= -1;
-            row(X(i,j))= -M_rank;
+            row(X(i,j)) = 1;
+            row(V(i)) = -1;
             A = [A; row];
-            rhs = [rhs; 1 - M_rank];
-            sense = [sense; '>'];
+            rhs = [rhs; 0];
+            sense = [sense; '<'];
 
-            % p_j - p_i <= 1 + M_rank*(1 - X(i,j))
+            % Xij <= Vj
             row = zeros(1, num_vars);
-            row(P(j))= +1;
-            row(P(i))= -1;
-            row(X(i,j))= +M_rank;
+            row(X(i,j))= 1;
+            row(V(j)) = -1;
             A = [A; row];
-            rhs = [rhs; 1 + M_rank];
+            rhs = [rhs; 0];
             sense = [sense; '<'];
         end
     end
+end
+
+% sum_i Xij = Vj
+for j = 2:n
+    row = zeros(1, num_vars);
+    row(X(:,j)) = 1;
+    row(V(j)) = -1;
+    A = [A; row];
+    rhs = [rhs; 0];
+    sense = [sense; '='];
+end
+
+% sum_j Xij <= Vi
+for i = 1:n
+    row = zeros(1, num_vars);
+    row(X(i,:)) = 1;
+    row(V(i)) = -1;
+    A = [A; row];
+    rhs = [rhs; 0];
+    sense = [sense; '<'];
+end
+
+
+for i = 1:n
+    % Vi = 0: Wi == 0
+    model.genconind(end+1).binvar = V(i);  % Binary variable
+    model.genconind(end).binval = 0;  % Activate when Vi = 0
+    model.genconind(end).a = zeros(1, num_vars);
+    model.genconind(end).a(W(i)) = 1;  
+    model.genconind(end).rhs = 0;  % Right-hand side
+    model.genconind(end).sense = '=';  
+
+   % Vi = 1: Wi = Ui
+    model.genconind(end+1).binvar = V(i);  % Binary variable
+    model.genconind(end).binval = 1;  % Activate when ksi_i = 1
+    model.genconind(end).a = zeros(1, num_vars);
+    model.genconind(end).a(W(i)) = 1;  
+    model.genconind(end).a(U(i)) = -1;
+    model.genconind(end).rhs = 0;  % Right-hand side
+    model.genconind(end).sense = '=';  
 end
 
 % Tj - Ti = Tij if X(ij) = 1
@@ -237,48 +287,54 @@ for j = 1:n
     end
 end
 
-for j = 1:n
-    % Case 1: If delta_j = 1, enforce U_j = w_j1 * ((1 - T_j) - a_j) + w_j2 * a_j
-    % U_j + w_j1 * Tj = w_j1 - wj_1 * a_j + w_j2 * a_j
+% calculate tmcdm normalization
+T_mcdm = T_trans;
+T_vals = T_mcdm(:, 2:end);
+T_vals = T_vals(T_vals > 0);
+T_mcdm = (T_mcdm - min(T_vals)) / (max(T_vals) - min(T_vals));
+T_mcdm(isnan(T_mcdm)) = 0;
+T_mcdm(isinf(T_mcdm)) = 0;
+T_mcdm = 1 - T_mcdm;
+
+for j = 2:n
+    % Case 1: If delta_j = 1, enforce U_j = w_j1 * (sum_i Xij T_mcdm_ij - a_j) + w_j2 * a_j
+    % U_j - w_j1 * sum_i Xij T_mcdm_ij = - wj_1 * a_j + w_j2 * a_j
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(U(j)) = 1;  
-    model.genconind(end).a(T(j)) = w(j,1);
-    model.genconind(end).rhs = w(j, 1) - w(j,1) * a(j) + w(j,2) * a(j);  % Right-hand side
+    model.genconind(end).a(U(j)) = 1;   
+    model.genconind(end).a(X(:,j)) = -w(j,1) * T_mcdm(:,j);
+    model.genconind(end).rhs = - w(j,1) * a(j) + w(j,2) * a(j); 
     model.genconind(end).sense = '=';  % Enforce equation
-end
-for j = 1:n
-    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - (1 - T_j)) + w_j2 * (1 - T_j)
-    % U_j - w_j3 * T_j + w_j2 * T_j = w_j3 * a_j - w_j3 + w_j2
+
+    % Case 2: If delta_j = 0, enforce U_j = w_j3 * (a_j - sum_i Xij T_mcdm_ij) + w_j2 * sum_i Xij T_mcdm_ij
+    % U_j + (w_j3 - wj2)* sum_i Xij T_mcdm_ij = w_j3 * a_j
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 0
     model.genconind(end).a = zeros(1, num_vars);
     model.genconind(end).a(U(j)) = 1;  
-    model.genconind(end).a(T(j)) = -w(j,3) + w(j,2);
-    model.genconind(end).rhs = w(j,3) * a(j) - w(j,3) + w(j,2);  % Right-hand side
+    model.genconind(end).a(X(:,j)) = (w(j,3) - w(j,2)) * T_mcdm(:,j);
+    model.genconind(end).rhs = w(j,3) * a(j);  % Right-hand side
     model.genconind(end).sense = '=';  % Enforce equation
-end
 
-for j = 1:n
-    % lambdaj = 1: 1 - Tj >= aj
+    % deltaj = 1: sum_i Xij T_mcdm_ij >= aj
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 1;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(T(j)) = -1;  
-    model.genconind(end).rhs = a(j) - 1;  % Right-hand side
+    model.genconind(end).a(X(:,j)) = T_mcdm(:,j);
+    model.genconind(end).rhs = a(j);  % Right-hand side
     model.genconind(end).sense = '>';  % Enforces T_j >= a_j when delta_j = 1
 
-    % lambdaj = 0: aj >= 1 - Tj
+    % deltaj = 0: aj >= sum_i Xij T_mcdm_ij
     model.genconind(end+1).binvar = delta(j);  % Binary variable
     model.genconind(end).binval = 0;  % Activate when delta_j = 1
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(T(j)) = 1;  
-    model.genconind(end).rhs = 1 - a(j);  % Right-hand side
-    model.genconind(end).sense = '>'; % Enforces T_j < a_j when delta_j = 0
+    model.genconind(end).a(X(:,j)) = T_mcdm(:,j);
+    model.genconind(end).rhs = a(j);  % Right-hand side
+    model.genconind(end).sense = '<';  
 end
 
-MT = 2;
+MT = 2*tmax;
 ME = 101;
 for i = 1:n
     for j = 1:n_const
@@ -317,22 +373,30 @@ for i = 1:n
     model.genconind(end).rhs = 0;  % Right-hand side
     model.genconind(end).sense = '=';  
 
-    % ksi_i = 1: Wi = Ui
+    % ksi_i = 0: Vi = 0 
     model.genconind(end+1).binvar = ksi(i);  % Binary variable
-    model.genconind(end).binval = 1;  % Activate when ksi_i = 1
+    model.genconind(end).binval = 0;  
     model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(W(i)) = 1;  
-    model.genconind(end).a(U(i)) = -1;
+    model.genconind(end).a(V(i)) = 1;  
     model.genconind(end).rhs = 0;  % Right-hand side
     model.genconind(end).sense = '=';  
 
-    % ksi_i = 0: Wi == 0
-    model.genconind(end+1).binvar = ksi(i);  % Binary variable
-    model.genconind(end).binval = 0;  % Activate when ksi_i = 0
-    model.genconind(end).a = zeros(1, num_vars);
-    model.genconind(end).a(W(i)) = 1;  
-    model.genconind(end).rhs = 0;  % Right-hand side
-    model.genconind(end).sense = '=';  
+    % % ksi_i = 1: Wi = Ui
+    % model.genconind(end+1).binvar = ksi(i);  % Binary variable
+    % model.genconind(end).binval = 1;  % Activate when ksi_i = 1
+    % model.genconind(end).a = zeros(1, num_vars);
+    % model.genconind(end).a(W(i)) = 1;  
+    % model.genconind(end).a(U(i)) = -1;
+    % model.genconind(end).rhs = 0;  % Right-hand side
+    % model.genconind(end).sense = '=';  
+    % 
+    % % ksi_i = 0: Wi == 0
+    % model.genconind(end+1).binvar = ksi(i);  % Binary variable
+    % model.genconind(end).binval = 0;  % Activate when ksi_i = 0
+    % model.genconind(end).a = zeros(1, num_vars);
+    % model.genconind(end).a(W(i)) = 1;  
+    % model.genconind(end).rhs = 0;  % Right-hand side
+    % model.genconind(end).sense = '=';  
 end
 
 % Convert to Sparse Matrix
@@ -349,15 +413,16 @@ variables.T = T;
 variables.E = E;
 variables.U = U;
 variables.delta = delta;
-variables.P = P;
 variables.Z = Z;
 variables.ksi = ksi;
 variables.W = W;
+variables.V = V;
 variables.n = n;
 
 % params
 params.outputflag = 1; % Display Gurobi output
 params.PoolSolutions = 1000;
+params.NumericFocus = 1; 
 %params.MIPFocus = 1; % Focus on finding feasible solutions faster
 
 end

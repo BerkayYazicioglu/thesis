@@ -1,4 +1,4 @@
-function output = random_task_allocator(robot, preprocessing)
+function output = greedy_mcdm_task_allocator(robot, preprocessing)
 % preprocessing -> tasks, de, dt, outcomes (table with columns <nodes>, <values>, <actions>, <task_idx>)
 %
 % tasks -> ordered allocted tasks
@@ -56,9 +56,9 @@ de(2:end) = preprocessing.de(sets.task_idx);
 T = D./robot.speed + repmat(dt, height(sets)+1, 1);
 E = D * robot.energy_per_m + repmat(de, height(sets)+1, 1);
 T(find(eye(height(sets)+1))) = 0;
-t_max = max(T(1, :));
 T_mcdm_vals = T(:, 2:end);
 T_mcdm_vals = T_mcdm_vals(T_mcdm_vals > 0);
+t_max = max(T(1, :));
 
 %% fitness function
 function u = fitness(x)
@@ -139,7 +139,9 @@ function u = fitness(x)
 end
  
 %% calculate fitness values
-fitness(randi(height(sets), 1));
+for i = 1:height(sets)
+    fitness(i);
+end
 
 % check if the robot needs to return to the charger
 if isempty(cache)
@@ -153,20 +155,21 @@ if isempty(cache)
     output.action_eval = NaN;
     output.cache_idx = 0;
 else
+    % find the best cache index
     if any(ismissing(cache),'all')
         error("NaN in cache")
     end
-    % select a random cache index
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
-    output.tasks = preprocessing.tasks(cache.tasks{1});
-    output.actions = cache.actions{1};
+    [max_u, max_row] = max(cache.u);
+    output.tasks = preprocessing.tasks(cache.tasks{max_row});
+    output.actions = cache.actions{max_row};
     output.charge_flag = false;
-    output.u = cache.u(1);
+    output.u = max_u;
     output.cache = cache;
     output.t_max = t_max;
     output.pp_task_idx = 1:length(preprocessing.tasks);
-    output.action_eval = cache.action_eval(1);
-    output.cache_idx = 1;
+    output.action_eval = cache.action_eval(max_row);
+    output.cache_idx = max_row;
 end
 
 end

@@ -7,7 +7,6 @@ function single_heatmap_analysis(mission, gui, robot_id)
     c_victim = [1 0 0];
     c_victim_found = [0 0.8 0.2];
 
-    addpath('src\gui\');
     % ===========================
     
     panel = gui.RightPanel;

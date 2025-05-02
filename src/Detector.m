@@ -11,9 +11,10 @@ classdef Detector < handle
         angles (1,:) double {mustBeVector}; % (degrees)
         arc double {mustBePositive}; % (degrees) 
         capability double {mustBeInRange(capability,0,1)}; 
-        model fistree;
+        %model fistree;
 
         FoV cell % area of effect per angle (x, y, distance)
+        FoV_area double; % max fov area 
         measurements table = table; % container for the current field of vision
         robot Robot;
     end
@@ -41,7 +42,7 @@ classdef Detector < handle
             obj.arc = deg2rad(params.arc);
             obj.type = params.type;
             obj.capability = params.capability;
-            obj.model = load(params.model).fistreemodel;
+            %obj.model = load(params.model).fistreemodel;
 
             obj.robot = robot;
 
@@ -76,6 +77,7 @@ classdef Detector < handle
                 end
                 obj.FoV{i} = points;
             end
+            obj.FoV_area = max(cellfun(@length, obj.FoV));
         end
         
         %% Measurement function
@@ -140,14 +142,14 @@ classdef Detector < handle
                 nodes = [nodes; field];
                 actions = [actions; repmat(action, length(field), 1)];
             end
-            if ~isempty(nodes)
-                cap = repmat(obj.capability, size(distances));
-                values = evalfis(obj.model, [destruction ...
-                                             distances/obj.max_range ...
-                                             cap]);
-                values = values ./ fov_areas;
-            end
-            outcomes = table(nodes, values, actions);
+            % if ~isempty(nodes)
+            %     cap = repmat(obj.capability, size(distances));
+            %     values = evalfis(obj.model, [destruction ...
+            %                                  distances/obj.max_range ...
+            %                                  cap]);
+            %     values = values ./ fov_areas;
+            % end
+            outcomes = table(nodes, distances, actions);
         end
 
         %% Measurement probability function

@@ -16,7 +16,6 @@ function single_mission_analysis(mission, gui, robot_id)
     charger_line = 2;
     charger_size = 150;
 
-    addpath('src\gui\');
     % ==========================+
 
     panel = gui.RightPanel;

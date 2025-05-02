@@ -5,7 +5,6 @@ function single_energy_analysis(mission, gui, ~)
     % ===========================
     
     panel = gui.RightPanel;
-
     gui.single_plot_options.Items = "none";
     gui.single_plot_options.Value = "none";
     

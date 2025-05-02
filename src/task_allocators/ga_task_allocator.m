@@ -8,14 +8,14 @@ function output = ga_task_allocator(robot, preprocessing)
 % cache -> optimization cache
 
 % ======= params ========
-max_iter = 250;
+max_iter = 150;
 n_population = 20;
 elite_count = 2;
 n_mut = 2;
 
 % =======================
-cache = table({}, {}, {}, [], {}, {}, {}, {}, ...
-    'VariableNames', {'sets', 'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
+cache = table({}, {}, {}, [], {}, {}, {}, {}, {}, [], ...
+    'VariableNames', {'sets', 'tasks', 'actions', 'u', 'u_map', 'u_search', 't_mcdm', 't', 'e', 'action_eval'});
 flagged = table({}, 'VariableNames', {'sets'});
 
 if isempty(preprocessing.tasks)
@@ -25,10 +25,35 @@ if isempty(preprocessing.tasks)
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(1);
+    output.pp_task_idx = [];
+    output.action_eval = NaN;
+    output.cache_idx = 0;
     return;
 end
 
 sets = groupcounts(preprocessing.outcomes, ["task_idx" "actions"]);
+sets.priority = zeros(height(sets), 1);
+sets.norm = zeros(height(sets), 1); 
+sets.capability = zeros(height(sets), 1);
+flags = false(height(sets), 1);
+for i = 1:height(sets)
+    task = preprocessing.tasks(sets.task_idx(i));
+    if task.type == "map"
+        sets.priority(i) = max(0, ...
+            numel(robot.mission.world.environment.neighbors(task.node)) - ...
+            numel(robot.mission.map.neighbors(task.node)));
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.mapper.capability;
+        flags(i) = true;
+    else
+        sets.priority(i) = task.priority;
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.detector.capability;
+    end
+end
+if sum(flags)
+    sets.priority(flags) = sets.priority(flags) / (max(sets.priority(flags) + 0.0001));
+end
 prediction_horizon = min(robot.policy.prediction_horizon, height(sets));
 
 % calculate all distance and travel time pairs
@@ -37,8 +62,18 @@ D = distance_matrix(robot, all_nodes, 2);
 T = seconds(D./robot.speed);
 
 % approximate the maximum time
-mean_dt = mean(preprocessing.dt(sets.task_idx));
-t_max = max(T(1,:) + mean_dt) * prediction_horizon; 
+all_nodes =  [robot.node preprocessing.tasks(sets.task_idx).node];
+D = distance_matrix(robot, all_nodes, 2);
+dt = zeros(1, height(sets) + 1);
+de = zeros(1, height(sets) + 1);
+dt(2:end) = seconds(preprocessing.dt(sets.task_idx));
+de(2:end) = preprocessing.de(sets.task_idx);
+T = D./robot.speed + repmat(dt, height(sets)+1, 1);
+E = D * robot.energy_per_m + repmat(de, height(sets)+1, 1);
+T(find(eye(height(sets)+1))) = 0;
+t_max = max(T(1, :));
+T_mcdm_vals = T(:, 2:end);
+T_mcdm_vals = T_mcdm_vals(T_mcdm_vals > 0);
 
 %% mutation function
 function children = mutation(parents, options, k, fitness, state, score, pop)
@@ -46,7 +81,11 @@ function children = mutation(parents, options, k, fitness, state, score, pop)
     for ii = 1:size(children, 1)
         child = children(ii,:);
         % pick 2 random cut points
-        idx = randperm(k, 2);
+        if k == 1
+            idx = 1;
+        else
+            idx = randperm(k, 2);
+        end
         startPt = min(idx);
         endPt = max(idx);
         % invert the substring
@@ -75,6 +114,15 @@ function children = crossover(parents, options, k, fitness, ~, pop)
     function child = orderCrossoverOneChild(p1, p2)
         n = length(p1);
         child = zeros(1,n);
+
+        if n == 1
+            if rand > 0.5
+                child = p1;
+            else
+                child = p2;
+            end
+            return
+        end
     
         % Choose two crossover points
         cx1 = randi([1, n-1]);
@@ -102,12 +150,13 @@ function u = fitness(x)
             [cache_x, cache_idx] = lcss(cache.sets, prev_x);
             if ~isempty(cache_x)
                 prev_n = length(cache_x);
-                t_ = cache.t{cache_idx}(1:prev_n);
+                %t_ = cache.t{cache_idx}(1:prev_n);
                 u_map = cache.u_map{cache_idx}(1:prev_n);
                 u_search = cache.u_search{cache_idx}(1:prev_n);
+                t_mcdm = cache.t_mcdm{cache_idx}(1:prev_n);
                 % calculate the aggregated utility
                 u = -mcdm(robot.mission.mcdm, ...
-                          1-min(t_, t_max)./t_max, u_map, u_search);
+                          t_mcdm, u_map, u_search);
                 u = sum(u);
             else
                 u = inf;
@@ -118,10 +167,13 @@ function u = fitness(x)
     
     actions_ = sets.actions(x);
     u_ = 0;
-    t_ = seconds(zeros(1, length(x)));
+    action_eval_ = 0;
+    t_ = zeros(1, length(x));
+    t_(1) = seconds(robot.time);
     e_ = robot.energy * ones(1, length(x));
     u_map = zeros(1, length(x));
     u_search = zeros(1, length(x)); 
+    t_mcdm = zeros(1, length(x));
     flag = true; 
     start_n = 1;
     included = false(height(preprocessing.outcomes), 1);
@@ -139,12 +191,14 @@ function u = fitness(x)
         e_(1:prev_n) = cache.e{cache_idx}(1:prev_n);
         u_map(1:prev_n) = cache.u_map{cache_idx}(1:prev_n);
         u_search(1:prev_n) = cache.u_search{cache_idx}(1:prev_n);
+        t_mcdm(1:prev_n) = cache.t_mcdm{cache_idx}(1:prev_n);
         % calculate the aggregated utility
         prev_u = mcdm(robot.mission.mcdm, ...
-                      1-min(t_(1:prev_n), t_max)./t_max, ...
+                      t_mcdm(1:prev_n), ...
                       u_map(1:prev_n), ...
                       u_search(1:prev_n)); 
         u_ = sum(prev_u);
+        action_eval_ = cache.action_eval(cache_idx);
         start_n = prev_n + 1;
         % calculate included elements
         included = ismember(preprocessing.outcomes(:, {'task_idx','actions'}), ...
@@ -157,11 +211,17 @@ function u = fitness(x)
         if n > 1
             prev_task_idx = x(n-1);
         end
-        t_(n) = t_(max(1, n-1)) + T(prev_task_idx+1, x(n)+1) + preprocessing.dt(set.task_idx);
-        e_(n) = e_(max(1, n-1)) - D(prev_task_idx+1, x(n)+1) * robot.energy_per_m - preprocessing.de(set.task_idx);
+        t_(n) = t_(max(1, n-1)) + T(prev_task_idx+1, x(n)+1);
+        e_(n) = e_(max(1, n-1)) - E(prev_task_idx+1, x(n)+1);
+        t_mcdm_min = min(T_mcdm_vals);
+        t_mcdm_max = max(T_mcdm_vals);
+        t_mcdm(n) = 1 - (T(prev_task_idx+1, x(n)+1) - t_mcdm_min)/(t_mcdm_max - t_mcdm_min);
+        if t_mcdm_max == t_mcdm_min
+            t_mcdm(n) = 1;
+        end
         % check constraints
         flag = check_constraints(preprocessing.constraints{set.task_idx}, ...
-                                 t_(n) + robot.time, ...
+                                 seconds(t_(n)), ...
                                  e_(n));
         if ~flag
             flagged = [flagged; {x(1:n)}];
@@ -178,31 +238,52 @@ function u = fitness(x)
             u_search(n) = 0;
         else
             U_ = dictionary("map", 0, "search", 0);
-            U_(preprocessing.tasks(set.task_idx).type) = sum(preprocessing.outcomes.values(additions));
+            action_eval = evalfis(robot.task_eval, ...
+               [sets.capability(x(n)) ...
+                sum(additions) / sets.norm(x(n)) ...
+                1 - median(preprocessing.outcomes.distances(additions)) / max(preprocessing.outcomes.distances(additions)), ...
+                sets.priority(x(n))]);
+            U_(preprocessing.tasks(set.task_idx).type) = action_eval;
             u_ = u_ + mcdm(robot.mission.mcdm, ...
-                           1-min(t_(n), t_max)/t_max, ...
+                           t_mcdm(n), ...
                            U_("map"), ...
                            U_("search")); 
             u_map(n) = U_("map");
             u_search(n) = U_("search");
+            if n == 1
+                action_eval_ = action_eval;
+            end
         end
     end
     % cache state
     if (flag || n > 0) & ...
         isempty(find(cellfun(@(x_) isequal(x_, x(1:n)), cache.sets), 1))
+        if any(ismissing(x)) || ...
+           any(ismissing(actions_)) || ...
+           any(ismissing(u_map)) || ...
+           any(ismissing(u_search)) || ...
+           any(ismissing(t_mcdm)) || ...
+           any(ismissing(t_)) || ...
+           any(ismissing(e_))
+            error("NaN in cache entry")
+        end
+
         cache = [cache; {{x(1:n)}, ...
                          {sets.task_idx(x(1:n))}, ...
                          {actions_(1:n)}, ...
                          u_, ...
                          {u_map(1:n)},...
                          {u_search(1:n)}, ...
+                         {t_mcdm(1:n)}, ...
                          {t_(1:n)}, ...
-                         {e_(1:n)}}];
+                         {e_(1:n)}}, ...
+                         action_eval_];
     end
     u = -u_;
 end
 
 %% sample combinations
+x = [];
 if prediction_horizon ~= 0 
     population = zeros(n_population, prediction_horizon);
     % iterate through the combinations and order the nodes
@@ -256,9 +337,14 @@ if isempty(cache)
     output.u = NaN;
     output.cache = cache;
     output.t_max = t_max;
+    output.pp_task_idx = [];
+    output.action_eval = NaN;
+    output.cache_idx = 0;
 else
+    if any(ismissing(cache),'all')
+        error("NaN in cache")
+    end
     cache.nodes = [cellfun(@(x) [preprocessing.tasks(x).node], cache.tasks, 'UniformOutput', false)];
-    cache.t(:) = cellfun(@(x) x + robot.time, cache.t(:), 'UniformOutput', false); 
     [max_u, max_row] = max(cache.u);
     max_x = cache.tasks{max_row};
     num_control = min(length(max_x), robot.policy.control_horizon);
@@ -270,6 +356,9 @@ else
     output.u = max_u;
     output.cache = cache;
     output.t_max = t_max;
+    output.pp_task_idx = sets.task_idx(x);
+    output.action_eval = cache.action_eval(max_row);
+    output.cache_idx = max_row;
 end
 
 end

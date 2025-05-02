@@ -7,8 +7,8 @@ function output = milp_lns_task_allocator(robot, preprocessing)
 % u -> utility of the selected allocation
 % cache -> optimization cache
 
-cache = table({}, {}, [], {}, {}, {}, {}, ...
-    'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't', 'e'});
+cache = table({}, {}, [], {}, {}, {}, {}, {}, [], ...
+    'VariableNames', {'tasks', 'actions', 'u', 'u_map', 'u_search', 't_mcdm', 't', 'e', 'action_eval'});
 
 if isempty(preprocessing.tasks)
     output.tasks = Task.empty;
@@ -17,6 +17,9 @@ if isempty(preprocessing.tasks)
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(0);
+    output.pp_task_idx = [];
+    output.action_eval = NaN;
+    output.cache_idx = 0;
     return
 end
 
@@ -29,27 +32,54 @@ if isempty(pp.tasks)
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(0);
+    output.pp_task_idx = [];
+    output.cache_idx = 0;
     return;
 end
 
 % construct tsp formulation
 sets = groupcounts(pp.outcomes, ["task_idx" "actions"]);
+sets.priority = zeros(height(sets), 1);
+sets.norm = zeros(height(sets), 1); 
+sets.capability = zeros(height(sets), 1);
+flags = false(height(sets), 1);
+for i = 1:height(sets)
+    task = pp.tasks(sets.task_idx(i));
+    if task.type == "map"
+        sets.priority(i) = max(0, ...
+            numel(robot.mission.world.environment.neighbors(task.node)) - ...
+            numel(robot.mission.map.neighbors(task.node)));
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.mapper.capability;
+        flags(i) = true;
+    else
+        sets.priority(i) = task.priority;
+        sets.norm(i) = max(sets.GroupCount);
+        sets.capability(i) = robot.detector.capability;
+    end
+end
+if sum(flags)
+    sets.priority(flags) = sets.priority(flags) / (max(sets.priority(flags) + 0.0001));
+end
 n = height(sets) + 1;
 
 % calculate all distance and travel time pairs
 all_nodes = [robot.node pp.tasks(sets.task_idx).node];
 D = distance_matrix(robot, all_nodes, 2);
-dt = [0 seconds(pp.dt(sets.task_idx))];
-de = [0 pp.de(sets.task_idx)];
+dt = zeros(1, height(sets) + 1);
+de = zeros(1, height(sets) + 1);
+dt(2:end) = seconds(pp.dt(sets.task_idx));
+de(2:end) = pp.de(sets.task_idx);
 T = D./robot.speed + repmat(dt, n, 1);
 E = D * robot.energy_per_m + repmat(de, n, 1);
 T(find(eye(n))) = 0;
 
 % approximate the maximum time
-t_max = milp_tmax(T); 
-T_trans = min(1, T ./ t_max);
-T_const = zeros(n, height(preprocessing.constraints{1}));
-E_const = zeros(n, height(preprocessing.constraints{1}));
+t_max = sum(T(:)); 
+% T_trans = min(1, T ./ t_max);
+T_trans = T;
+T_const = zeros(n, height(pp.constraints{1}));
+E_const = zeros(n, height(pp.constraints{1}));
 
 % calculate wij for each candidate i
 keys = robot.mission.mcdm.key;
@@ -70,7 +100,12 @@ for i = 2:n
     set = sets(i-1, :);
     flags = pp.outcomes.task_idx == set.task_idx & ...
             pp.outcomes.actions == set.actions;
-    a(i) = sum(pp.outcomes.values(flags));
+
+    a(i) = evalfis(robot.task_eval, ...
+                  [set.capability ...
+                  sum(flags) / set.norm ...
+                  1 - median(pp.outcomes.distances(flags)) / max(pp.outcomes.distances(flags)), ...
+                  set.priority]);
     a_types(i) = pp.tasks(set.task_idx).type;
     wi2 = 0;
     wi3 = 0;
@@ -89,9 +124,10 @@ for i = 2:n
     w(i, :) = [mcdm_d('t') wi2 wi3];
     
     % constraints
-    const = preprocessing.constraints{i-1};
+    const = pp.constraints{i-1};
     for k = 1:height(const)
-        T_const(i,k) = seconds(const.Time(k) - robot.time) / t_max; 
+        % T_const(i,k) = seconds(const.Time(k) - robot.time) / t_max; 
+        T_const(i,k) = seconds(const.Time(k) - robot.time);
         E_const(i,k) = const.energy(k);
     end
 end
@@ -104,34 +140,58 @@ milp_output = milp_lns(T_trans, ...
                        robot.energy, ...
                        w, ...
                        a, ...
-                       u);
+                       u, ...
+                       t_max, ...
+                       min(robot.policy.prediction_horizon, height(sets)));
 
 
 %% compile results
+T_mcdm = T_trans;
+T_vals = T_mcdm(:, 2:end);
+T_vals = T_vals(T_vals > 0);
+T_mcdm = (T_mcdm - min(T_vals)) / (max(T_vals) - min(T_vals));
+T_mcdm(isnan(T_mcdm)) = 0;
+T_mcdm(isinf(T_mcdm)) = 0;
+T_mcdm = 1 - T_mcdm;
+
 for i = 1:height(milp_output.cache)
     row = milp_output.cache(i, :);
-    len_sol = sum(row.u{1} > 0);
-    if len_sol > 0
-        x_sol = row.x{1}(2:1+len_sol) - 1;
-        t_sol = robot.time + seconds(row.t{1}(2:1+len_sol) * t_max);
-        e_sol = row.e{1}(2:1+len_sol);
-        u_sol = row.u{1}(2:1+len_sol);
-        tasks_sol = pp_task_idx(sets.task_idx(x_sol));
-        actions_sol = sets.actions(x_sol);
-        u_map_sol = zeros(size(u_sol));
-        u_search_sol = zeros(size(u_sol));
-        u_map_sol([preprocessing.tasks(tasks_sol).type] == "map") = ...
-            u_sol([preprocessing.tasks(tasks_sol).type] == "map");
-        u_search_sol([preprocessing.tasks(tasks_sol).type] == "search") = ...
-            u_sol([preprocessing.tasks(tasks_sol).type] == "search");
-        cache = [cache; {{tasks_sol(:)'}, ...
-                         {actions_sol(:)'}, ...
-                         row.u_total, ...
-                         {u_map_sol(:)'}, ...
-                         {u_search_sol(:)'}, ...
-                         {t_sol(:)'}, ...
-                         {e_sol(:)'}}];
+    x_sol = row.x{1}(2:end) - 1;
+    % t_sol = robot.time + seconds(row.t{1}(2:1+len_sol) * t_max);
+    t_sol = seconds(robot.time) + row.t{1}(2:end);
+    e_sol = row.e{1}(2:end);
+    u_sol = row.u{1}(2:end);
+    tasks_sol = pp_task_idx(sets.task_idx(x_sol));
+    actions_sol = sets.actions(x_sol);
+    u_map_sol = zeros(size(u_sol));
+    u_search_sol = zeros(size(u_sol));
+    u_map_sol([preprocessing.tasks(tasks_sol).type] == "map") = ...
+        u_sol([preprocessing.tasks(tasks_sol).type] == "map");
+    u_search_sol([preprocessing.tasks(tasks_sol).type] == "search") = ...
+        u_sol([preprocessing.tasks(tasks_sol).type] == "search");
+    t_mcdm_sol = [];
+    for j = 1:length(row.x{1})-1
+        t_mcdm_sol(end+1) = T_mcdm(row.x{1}(j), row.x{1}(j+1));
     end
+    
+    if any(ismissing(actions_sol)) || ...
+       any(ismissing(u_map_sol)) || ...
+       any(ismissing(u_search_sol)) || ...
+       any(ismissing(t_sol)) || ...
+       any(ismissing(e_sol)) || ...
+       any(ismissing(u_sol))
+        error("NaN in cache entry")
+    end
+
+    cache = [cache; {{tasks_sol(:)'}, ...
+                     {actions_sol(:)'}, ...
+                     row.u_total, ...
+                     {u_map_sol(:)'}, ...
+                     {u_search_sol(:)'}, ...
+                     {t_mcdm_sol(:)'}}, ...
+                     {t_sol(:)'}, ...
+                     {e_sol(:)'}, ...
+                     row.u_total];
 end
 len_sol = sum(milp_output.u > 0);
 if len_sol > 0
@@ -144,6 +204,9 @@ if len_sol > 0
     output.u = milp_output.u_total;
     output.cache = cache;
     output.t_max = t_max;
+    output.pp_task_idx = pp_task_idx;
+    output.action_eval = milp_output.u_total;
+    output.cache_idx = milp_output.cache_idx;
 else
     output.tasks = Task.empty;
     output.actions = string.empty;
@@ -151,6 +214,9 @@ else
     output.u = NaN;
     output.cache = cache;
     output.t_max = seconds(0);
+    output.pp_task_idx = pp_task_idx;
+    output.action_eval = NaN;
+    output.cache_idx = 0;
 end
 
 end

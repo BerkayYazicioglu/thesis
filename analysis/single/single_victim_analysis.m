@@ -3,8 +3,6 @@ function single_victim_analysis(mission, gui, ~)
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
     markers = dictionary("detected", "pentagram", "revisited", ".");
-
-    addpath('src\gui\');
     % ===========================
     
     panel = gui.RightPanel;

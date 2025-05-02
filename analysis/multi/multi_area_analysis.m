@@ -1,48 +1,48 @@
-function multi_area_analysis(result_path, gui, ~)
+function multi_area_analysis(datasets, gui, ~)
 
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
+    dataset_dir = "data/";
     % ===========================
-    
-    panel = gui.RightPanel;
-    mission = load(result_path +  ...
-                   gui.dataset_select.Value + "\" + ...
-                   gui.mission_select.Value + "\mission.mat").mission;
 
-    gui.single_plot_options.Items = "none";
-    gui.single_plot_options.Value = "none";
+    panel = gui.RightPanel;
     
+    experiments = datasets;
+    init_conds = gui.multi_group_select.Value;
+
+    colors = distinguishable_colors(length(experiments), 'white');
     % start creating plots
     delete(panel.Children);
     ax = axes(panel);
+
+    for j = 1:length(experiments)
+        data = load(dataset_dir + experiments{j}).data.(init_conds).area;
+
+        hold(ax, 'on');
+
+        % fill(ax, [data.Time; flipud(data.Time)],  ...
+        %      [data.max; flipud(data.min)], ...
+        %      [0.8 0.8 1], ...
+        %      'FaceColor', colors(j,:), 'EdgeColor','none', 'FaceAlpha', 0.2);
+        plot(ax, data.Time, data.mean, '-', 'Color', colors(j,:), 'LineWidth', 1.4);
+
+        hold(ax, 'off');
+    end
+
     hold(ax, 'on');
-
-    da = (mission.world.X(1,2) - mission.world.X(1,1)) * ...
-         (mission.world.Y(2,1) - mission.world.Y(1,1));
-    % individual robots
-    for i = 1:length(mission.robots)
-        plot(ax, mission.robots(i).history.Time, mission.robots(i).history.mapped_area * da);
-    end
-    % combined
-    combined = mission.robots(1).history(:, "mapped_area");
-    for i = 2:length(mission.robots)
-        combined = outerjoin(combined, mission.robots(i).history(:, "mapped_area"), ...
-                            'Keys', 'Time', ...
-                            'MergeKeys', true, ...
-                            'Type', 'full');
-    end
-    combined = sortrows(combined, 'Time');
-    if length(mission.robots) > 1
-        % plot combined
-        combined = fillmissing(combined, 'previous', 'DataVariables', @isnumeric);
-        combined.total = sum(table2array(combined), 2);
-        plot(ax, combined.Time, combined.total * da);
-        legend(ax, {mission.robots.id "total"}, "Location", "best");
-    else
-        legend(ax, {mission.robots.id}, "Location", "best");
+    legend_entries = {};
+    for i = 1:length(experiments)
+        legend_entries{end+1} = scatter(ax, nan, nan, ...
+            'MarkerEdgeColor', colors(i,:), ...
+            'MarkerFaceColor', colors(i,:), ...
+            'Marker', 'square');
     end
 
-    new_ticks = 0:x_label_interval:mission.time;
+    legend([legend_entries{:}], cellfun(@(x) replace(string(x), '_', ' '), experiments)', ...
+        'Location', 'bestoutside');
+    hold(ax, 'off');
+
+    new_ticks = 0:x_label_interval:max(data.Time);
     new_ticks.Format = 'hh:mm';
     xticks(ax, new_ticks);
     xticklabels(ax, string(new_ticks));
@@ -53,7 +53,6 @@ function multi_area_analysis(result_path, gui, ~)
     title(ax, "mapped area", 'Interpreter', 'none');
 
     grid(ax, 'on');
-    hold(ax, 'off');
 
     % bind silder
     gui.range_select.ValueChangedFcn = @slider_callback;

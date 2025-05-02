@@ -5,7 +5,6 @@ function single_task_analysis(mission, gui, robot_id)
     markers = dictionary("map", ".", ...
                          "search", "pentagram");
 
-    addpath('src\gui\');
     % ===========================
     
     panel = gui.RightPanel;
@@ -73,44 +72,27 @@ function single_task_analysis(mission, gui, robot_id)
     ax = nexttile(layout);
     hold(ax, 'on');
 
-    spawn_groups = groupcounts(task_history, ["Time" "spawn_robot" "task_type"]);
-    r_colors = distinguishable_colors(length(robot_id), ...
-        {'white', 'green', 'black', 'red'});
+    spawn_groups = groupcounts(task_history, ["Time" "task_type"]);
+    spawn_groups = rmmissing(spawn_groups);
     task_types = ["map" "search"];
-    for i = 1:length(robot_id)
-        % spawned
-        group = spawn_groups(robot_id(i) == spawn_groups.spawn_robot, :); 
-        for ii = 1:length(task_types)
-            flags = group.task_type == task_types(ii);
-            scatter(ax, ...
-                group.Time(flags), group.GroupCount(flags), 50, ...
-                'MarkerFaceAlpha', 0.5, ...
-                'MarkerFaceColor', r_colors(i, :), ...
-                'MarkerEdgeColor', r_colors(i, :), ...
-                'Marker', markers(task_types(ii)));
-        end
+    colors = ["#7E2F8E" "#77AC30"];
+    for ii = 1:length(task_types)
+        flags = spawn_groups.task_type == task_types(ii);
+        scatter(ax, ...
+            spawn_groups.Time(flags), spawn_groups.GroupCount(flags), 35, ...
+            'MarkerFaceAlpha', 0.9, ...
+            'MarkerFaceColor', colors(ii), ...
+            'MarkerEdgeColor', colors(ii), ...
+            'Marker', markers(task_types(ii)));
     end
-    % legend
-    legend_entries = {};
-    for i = 1:length(robot_id)
-        legend_entries{end+1} = scatter(ax, nan, nan, ...
-            'MarkerEdgeColor', r_colors(i,:), ...
-            'MarkerFaceColor', r_colors(i,:), ...
-            'Marker', 'square');
-    end
-    keys = markers.keys;
-    for i = 1:length(keys)
-        legend_entries{end+1} = scatter(ax, nan, nan, ...
-            'MarkerEdgeColor', 'black', 'Marker', markers(keys(i)));
-    end
-    legend([legend_entries{:}], [robot_id(:); markers.keys], "Location", "bestoutside");
+    legend(ax, task_types, "Location", "bestoutside");
 
     xticks(ax, new_ticks);
     xlim(ax, [new_ticks(1) new_ticks(end)]);
     xticklabels(ax, string(new_ticks));
     xtickangle(ax, 90);
     xlabel(ax, 'time (hh:mm)');
-    title(ax, 'number of spawned tasks per robot type');
+    title(ax, 'number of spawned tasks');
     grid(ax, 'on');
     hold(ax, 'off');
 
@@ -119,42 +101,26 @@ function single_task_analysis(mission, gui, robot_id)
     ax = nexttile(layout);
     hold(ax, 'on');
 
-    complete_groups = groupcounts(task_history, ["t_complete" "complete_robot" "task_type"]);
+    complete_groups = groupcounts(task_history, ["t_complete" "task_type"]);
     complete_groups = rmmissing(complete_groups);
-    for i = 1:length(robot_id)
-        % completed
-        group = complete_groups(robot_id(i) == complete_groups.complete_robot, :); 
-        for ii = 1:length(task_types)
-            flags = group.task_type == task_types(ii);
-            scatter(ax, ...
-                group.t_complete(flags), group.GroupCount(flags), 35, ...
-                'MarkerFaceAlpha', 0.5, ...
-                'MarkerFaceColor', r_colors(i, :), ...
-                'MarkerEdgeColor', r_colors(i, :), ...
-                'Marker', markers(task_types(ii)));
-        end
+    for ii = 1:length(task_types)
+        flags = complete_groups.task_type == task_types(ii);
+        scatter(ax, ...
+            complete_groups.t_complete(flags), complete_groups.GroupCount(flags), 35, ...
+            'MarkerFaceAlpha', 0.9, ...
+            'MarkerFaceColor', colors(ii), ...
+            'MarkerEdgeColor', colors(ii), ...
+            'Marker', markers(task_types(ii)));
     end
     % legend
-    legend_entries = {};
-    for i = 1:length(robot_id)
-        legend_entries{end+1} = scatter(ax, nan, nan, ...
-            'MarkerEdgeColor', r_colors(i,:), ...
-            'MarkerFaceColor', r_colors(i,:), ...
-            'Marker', 'square');
-    end
-    keys = markers.keys;
-    for i = 1:length(keys)
-        legend_entries{end+1} = scatter(ax, nan, nan, ...
-            'MarkerEdgeColor', 'black', 'Marker', markers(keys(i)));
-    end
-    legend([legend_entries{:}], [robot_id(:); markers.keys], "Location", "bestoutside");
+    legend(ax, task_types, "Location", "bestoutside");
 
     xticks(ax, new_ticks);
     xlim(ax, [new_ticks(1) new_ticks(end)]);
     xticklabels(ax, string(new_ticks));
     xtickangle(ax, 90);
     xlabel(ax, 'time (hh:mm)');
-    title(ax, 'number of completed tasks per robot type');
+    title(ax, 'number of completed tasks');
     grid(ax, 'on');
     hold(ax, 'off');
 

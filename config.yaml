@@ -5,11 +5,11 @@ world:
         count: 100
         t_max: '10:00:00'
         t_min: '05:00:00'
-        t_var: '02:00:00'
+        t_var: '00:30:00'
 gui:
-    verbose: 2
+    verbose: 1
     save_gif: false
-    optimizer_types: [random, greedy, brute_force, ga]
+    optimizer_types: [random, greedy_t, greedy_u, greedy_mcdm, hybrid, ga]
     preprocessing_types: [closest, shortest_path]
     analysis_types: [heatmap, 
                      victim,
@@ -20,12 +20,14 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '05:00:00'
-    PI_model: PI_model.fis
+    t_end: '04:00:00'
+    PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: false
+    coordination_flag: true
     coordination_radius: 3
-    q_init: [1,1]
+    q_init: [100,100]
+    task_evaluation_model: task_evaluation.mat
     tasks:
         map:
             type: map
@@ -34,27 +36,27 @@ mission:
         search:
             type: search
             pi_init: PI >= 0.1
-            pi_complete: ismember(node, robot.detector.measurements.nodes)
+            pi_complete: ismember(node, measured)
     mcdm:
         t: 1
         m: 4
-        s: 15
-        mt: 8
-        st: 20
-        ms: 0
-        mst: 25
+        s: 8
+        mt: 7
+        st: 15
+        ms: 20
+        mst: 20
     charger:
         id: charger
         max_step: 0.5
-        speed: 0.1
+        speed: 0.025
         color: white
         policy: 
             optimizer: static
-            control_horizon: 10
-            task_proximity: 3
+            control_horizon: 5
+            task_proximity: 10
     robots:
         ugv:
-            count: 1
+            count: 2
         uav: 
             count: 0
         crawler:

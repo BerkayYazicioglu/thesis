@@ -1,0 +1,23 @@
+function path = extract_milp_path(x, variables)
+
+X = reshape(x(variables.X(:)), [variables.n variables.n]);
+end_idx = find(x(variables.ksi(:)) == 0, 1);
+if isempty(end_idx)
+    end_idx = variables.n + 1;
+end
+idx = 1;
+path = 1;
+while true
+    next = find(X(idx, :) == 1);
+    if isempty(next)
+        break
+    end
+    path(end+1) = next;
+    idx = next;
+    if idx == end_idx
+        continue
+    end
+end
+
+end
+
