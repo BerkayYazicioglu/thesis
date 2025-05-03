@@ -33,6 +33,7 @@ E = E(idx);
 % poll through tasks, predict and populate num_tasks amount of valid
 % tasks for preprocessing
 idx = 1;
+flagged_idx = 1;
 for i = 1:length(tasks)
     [outcomes, de, dt] = tasks(i).predict(robot);
     if ~isempty(outcomes)
@@ -48,8 +49,11 @@ for i = 1:length(tasks)
         output.outcomes = [output.outcomes; outcomes];
         output.constraints{idx} = constraints;
         idx = idx + 1;
+        if tasks(i).flag
+            flagged_idx = flagged_idx + 1;
+        end
     end
-    if idx > num_tasks
+    if flagged_idx > num_tasks 
         break;
     end
 end
