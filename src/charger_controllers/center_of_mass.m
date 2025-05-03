@@ -53,6 +53,14 @@ distances = vecnorm((com - candidate_locs)');
 [~, idx] = min(distances);
 candidate_goal = candidates(idx);
 % apply goal passivity
+if isempty(candidate_goal)
+    charger.schedule = timetable(charger.mission.time + seconds(4 * 60), ...
+        charger.node, 'VariableNames', {'node'});
+    output.candidates = string.empty;
+    output.schedule = charger.schedule;
+    output.goal = string.empty;
+    return
+end
 if ismember(candidate_goal, map.nearest(charger.node, goal_passivity, 'Method', 'unweighted')) && ...
    ismember(charger.node, candidates)
     candidate_goal = charger.node;
