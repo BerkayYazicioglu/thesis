@@ -20,13 +20,14 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '04:00:00'
+    t_end: '08:00:00'
     PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: false
     coordination_flag: true
+    extended_tasks_flag: true
     coordination_radius: 3
-    q_init: [100,100]
+    q_init: [1,1]
     task_evaluation_model: task_evaluation.mat
     tasks:
         map:
@@ -56,7 +57,7 @@ mission:
             task_proximity: 10
     robots:
         ugv:
-            count: 2
+            count: 1
         uav: 
             count: 0
         crawler:

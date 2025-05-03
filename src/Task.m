@@ -12,6 +12,7 @@ classdef Task < handle
 
 
         % constructed fields
+        flag = true;
         cache table;
         R_k (1,:) string {mustBeVector}; % set of robots that can attempt
                                          % the task at timestep k

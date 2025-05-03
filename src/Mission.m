@@ -190,6 +190,9 @@ classdef Mission < handle
             A_frontier = A(known, unknown);
             frontier = string(known(any(A_frontier, 2)));
 
+            % remove flagged tasks
+            obj.tasks([obj.tasks.flag] == false) = [];
+
             % spawn mapping tasks
             task_nodes = [[obj.tasks.node] ""];
             for i = 1:length(frontier)
@@ -273,6 +276,53 @@ classdef Mission < handle
             outputs.tt = tt;
 
             obj.tasks(completed) = [];
+
+            % extended tasks
+            if obj.settings.extended_tasks_flag
+                new_map = [];
+                new_search = [];
+                search_PI = [];
+                for i = 1:length(obj.tasks)
+                    node = obj.tasks(i).node;
+                    extended_nodes = obj.map.nearest(node, 3, 'Method', 'unweighted');
+                    visible_nodes = obj.map.Nodes.Name(obj.map.Nodes.visible);
+                    extended_nodes = extended_nodes(ismember(extended_nodes, visible_nodes));
+                    if obj.tasks(i).type == "map"
+                        new_map = [new_map; extended_nodes];
+                    else
+                        new_search = [new_search; extended_nodes];
+                        search_PI = [search_PI; 
+                            repmat(obj.tasks(i).priority / 4, numel(extended_nodes), 1)];
+                    end
+                end
+                new_map = unique(new_map);
+                [new_search,~,g] = unique(new_search);   
+                if ~isempty(new_search)
+                    search_PI = accumarray(g, search_PI, [], @mean);
+                end
+                for i = 1:length(new_map)
+                    flags = robot.history.node == new_map(i) & robot.history.action == "map_1";
+                    if ~ismember(new_map(i), [obj.tasks([obj.tasks.type] == "map").node]) && sum(flags) == 0
+                        obj.tasks(end+1) = Task(obj.settings.tasks.map, ...
+                                                obj.time, ...
+                                                new_map(i), ...
+                                                1, ...
+                                                obj.robots);
+                        obj.tasks(end).flag = false;
+                    end
+                end
+                for i = 1:length(new_search)
+                    flags = robot.history.node == new_search(i) & robot.history.action == "search_1";
+                    if ~ismember(new_search(i), [obj.tasks([obj.tasks.type] == "search").node]) && sum(flags) == 0
+                        obj.tasks(end+1) = Task(obj.settings.tasks.search, ...
+                                                obj.time, ...
+                                                new_search(i), ...
+                                                search_PI(i), ...
+                                                obj.robots);
+                        obj.tasks(end).flag = false;
+                    end
+                end
+            end
         end
 
         %% Initialize GUI handles
