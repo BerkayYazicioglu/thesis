@@ -43,6 +43,10 @@ elseif robot.policy.optimizer == "greedy_t"
     num_tasks = 50;
     tasks = tasks(1:min(numel(tasks), num_tasks));
     num_tasks = numel(tasks);
+elseif robot.policy.optimizer == "greedy_mcdm" || robot.policy.optimizer == "greedy_u" 
+    num_tasks = 50;
+    tasks = tasks(randperm(numel(tasks), min(numel(tasks), num_tasks)));
+    num_tasks = numel(tasks);
 end
 
 for i = 1:length(tasks)
