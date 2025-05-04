@@ -42,8 +42,8 @@ if isfield(result, 'pool')
                          {e_result(x_idx)}, ...
                          {w_result(x_idx)}, ...
                          result.objval}];
+        cache_idx = height(cache);
     end
-    cache_idx = height(cache);
 else
     disp('gurobi couldnt find a feasible solution, generating initial conditions');
     result.x = milp_init_cond(T_trans, E_trans, T_const, E_const, e0, w, a, pred_horizon, u);

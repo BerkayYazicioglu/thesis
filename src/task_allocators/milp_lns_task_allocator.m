@@ -33,6 +33,7 @@ if isempty(pp.tasks)
     output.cache = cache;
     output.t_max = seconds(0);
     output.pp_task_idx = [];
+    output.action_eval = NaN;
     output.cache_idx = 0;
     return;
 end
@@ -163,15 +164,17 @@ for i = 1:height(milp_output.cache)
     u_sol = row.u{1}(2:end);
     tasks_sol = pp_task_idx(sets.task_idx(x_sol));
     actions_sol = sets.actions(x_sol);
-    u_map_sol = zeros(size(u_sol));
-    u_search_sol = zeros(size(u_sol));
-    u_map_sol([preprocessing.tasks(tasks_sol).type] == "map") = ...
-        u_sol([preprocessing.tasks(tasks_sol).type] == "map");
-    u_search_sol([preprocessing.tasks(tasks_sol).type] == "search") = ...
-        u_sol([preprocessing.tasks(tasks_sol).type] == "search");
-    t_mcdm_sol = [];
+    u_map_sol = zeros(size(x_sol));
+    u_search_sol = zeros(size(x_sol));
+    t_mcdm_sol = zeros(size(x_sol));
     for j = 1:length(row.x{1})-1
-        t_mcdm_sol(end+1) = T_mcdm(row.x{1}(j), row.x{1}(j+1));
+        type = extractBefore(sets.actions(x_sol(j)), '_');
+        if type == "map"
+            u_map_sol(j) = a(x_sol(j)+1);
+        else
+            u_search_sol(j) = a(x_sol(j)+1);
+        end
+        t_mcdm_sol(j) = T_mcdm(row.x{1}(j), row.x{1}(j+1));
     end
     
     if any(ismissing(actions_sol)) || ...
@@ -191,7 +194,7 @@ for i = 1:height(milp_output.cache)
                      {t_mcdm_sol(:)'}}, ...
                      {t_sol(:)'}, ...
                      {e_sol(:)'}, ...
-                     row.u_total];
+                     a(x_sol(1)+1)];
 end
 len_sol = sum(milp_output.u > 0);
 if len_sol > 0
@@ -205,7 +208,7 @@ if len_sol > 0
     output.cache = cache;
     output.t_max = t_max;
     output.pp_task_idx = pp_task_idx;
-    output.action_eval = milp_output.u_total;
+    output.action_eval = a(x_sol(1)+1);
     output.cache_idx = milp_output.cache_idx;
 else
     output.tasks = Task.empty;

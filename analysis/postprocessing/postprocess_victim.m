@@ -3,6 +3,7 @@ function output = postprocess_victim(missions)
 
     count_data = timetable(seconds(0), 0, 'VariableNames', {'count'});
     health_data = timetable(duration.empty(0,1), [], 'VariableNames', {'health'});
+
     for k = 1:length(missions)
         mission = missions(k);
         % go over victims and construct data
@@ -16,9 +17,12 @@ function output = postprocess_victim(missions)
             end
         end
         victim_data = sortrows(victim_data, 'Time');
+        if isempty(victim_data)
+            continue;
+        end
         detected_data = victim_data(victim_data.status == 'detected', :);
         detected_data.count = [1:height(detected_data)]';
-        
+    
         count_data = synchronize(count_data, detected_data(:, "count"), 'union');
         health_data = [health_data; detected_data(:, "health")];
     end

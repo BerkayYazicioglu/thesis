@@ -25,7 +25,7 @@ mission:
     milp_solver: milp_v2
     prediction_errors: false
     coordination_flag: true
-    extended_tasks_flag: true
+    extended_tasks_flag: false
     coordination_radius: 3
     q_init: [1,1]
     task_evaluation_model: task_evaluation.mat
@@ -52,7 +52,7 @@ mission:
         speed: 0.025
         color: white
         policy: 
-            optimizer: center_of_mass
+            optimizer: static
             control_horizon: 5
             task_proximity: 10
     robots:

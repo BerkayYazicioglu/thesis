@@ -37,7 +37,7 @@ q_inits = {...
            };
 
 repetitions = 1;
-experiment_name = "random_single_robot_dynamic_extended";
+experiment_name = "milp_single_robot_static";
 
 
 %% Get config
@@ -71,9 +71,9 @@ for i = 1:length(q_inits)
     for ii = 1:repetitions
         disp('experiment: ' + string(ii+repetitions*(i-1)));
 
-        if ii+repetitions*(i-1) < 4
-            continue
-        end
+        % if ii+repetitions*(i-1) < 17
+        %     continue
+        % end
 
         world = World(settings.world);
         mission = Mission(settings.mission, world);
