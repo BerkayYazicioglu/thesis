@@ -1,5 +1,5 @@
-max_step: 2
-height: 1
+max_step: 25
+height: 25
 speed: 1
 crit_energy: 0
 energy_per_m: 0.1
@@ -8,13 +8,13 @@ color: white
 policy:
     preprocessing: closest
     num_tasks: 200
-    optimizer: ga
+    optimizer: milp_lns
     control_horizon: 1
     prediction_horizon: 6
 capabilities:
     detector:
         type: search
-        capability: 0.5
+        capability: 0.25
         model: search_capability.mat
         t_s: '03:00'
         d_energy: 10

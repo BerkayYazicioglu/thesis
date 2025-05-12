@@ -1,7 +1,7 @@
 function output = milp_lns(T_trans, E_trans, T_const, E_const, e0, w, a, u, tmax, pred_horizon)
 
 % =========================================================================
-max_s_incumbent = 15;
+max_s_incumbent = 8;
 max_s_lns = 5;
 size = 6;
 max_stall = 5;

@@ -118,9 +118,9 @@ model.lb(E(1)) = e0;
 model.ub(E(1)) = e0;
 
 model.lb(U(:)) = 0;  % U_j must be non-negative
-model.ub(U(:)) = 100; % No upper bound on U_j
+model.ub(U(:)) = 20; % No upper bound on U_j
 model.lb(W(:)) = 0;  % U_j must be non-negative
-model.ub(W(:)) = 100; % No upper bound on U_j
+model.ub(W(:)) = 20; % No upper bound on U_j
 model.ub(U(1)) = 0; 
 model.ub(W(1)) = 0; 
 model.lb(delta(:)) = 0; % Binary variable lower bound

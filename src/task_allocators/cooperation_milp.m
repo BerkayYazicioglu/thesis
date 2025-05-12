@@ -1,13 +1,15 @@
-function [model, params, variables] = cooperation_milp(T_mcdm_all, ...
-                                                       T_all, ...
+function [model, params, variables] = cooperation_milp(T_all, ...
                                                        W_all, ...
                                                        A_all, ...
+                                                       E_all, ...
+                                                       T_const_all, ...
+                                                       E_const_all, ...
                                                        schedule_starts, ...
-                                                       schedule_lengths, ...
+                                                       e0, ...
+                                                       n, ...
                                                        conflicts)
 
 % Build the milp model
-n = sum(schedule_lengths);
 model.A = sparse([]);
 model.obj = [];
 model.rhs = [];
@@ -24,12 +26,13 @@ delta_all_idx = {};
 U_all_idx = {};
 W_all_idx = {};
 T_all_idx = {};
+E_all_idx = {};
 
-for k = 1:length(T_mcdm_all)
+for k = 1:length(T_all)
     % X (schedule transition selection matrix)
-    X_idx = zeros(size(T_mcdm_all{k}));
-    for i = 1:size(T_mcdm_all{k},1)
-        for j = 1:size(T_mcdm_all{k},2)
+    X_idx = zeros(n,n);
+    for i = 1:n
+        for j = 1:n
             var_name = sprintf('X%d_%d_%d', k, i, j);
             model.vtype = [model.vtype 'B']; % Binary variable
             model.varnames{end+1} = var_name;
@@ -39,10 +42,10 @@ for k = 1:length(T_mcdm_all)
     X_all_idx{end+1} = X_idx;
 end
 
-for k = 1:length(T_mcdm_all)
+for k = 1:length(T_all)
     % V (schedule selection)
-    V_idx = zeros(schedule_lengths(k), 1);
-    for j = 1:schedule_lengths(k)
+    V_idx = zeros(n, 1);
+    for j = 1:n
         var_name = sprintf('V%d_%d', k, j);
         model.vtype = [model.vtype 'B'];
         model.varnames{end+1} = var_name;
@@ -51,10 +54,10 @@ for k = 1:length(T_mcdm_all)
     V_all_idx{end+1} = V_idx;
 end
 
-for k = 1:length(T_mcdm_all)
+for k = 1:length(T_all)
     % delta 
-    delta_idx = zeros(schedule_lengths(k), 1);
-    for j = 1:schedule_lengths(k)
+    delta_idx = zeros(n, 1);
+    for j = 1:n
         var_name = sprintf('delta%d_%d', k, j);
         model.vtype = [model.vtype 'B'];
         model.varnames{end+1} = var_name;
@@ -63,10 +66,10 @@ for k = 1:length(T_mcdm_all)
     delta_all_idx{end+1} = delta_idx;
 end
 
-for k = 1:length(T_mcdm_all)
+for k = 1:length(T_all)
     % U (schedule utility)
-    U_idx = zeros(schedule_lengths(k), 1);
-    for j = 1:schedule_lengths(k)
+    U_idx = zeros(n, 1);
+    for j = 1:n
         var_name = sprintf('U%d_%d', k, j);
         model.vtype = [model.vtype 'C'];
         model.varnames{end+1} = var_name;
@@ -75,10 +78,10 @@ for k = 1:length(T_mcdm_all)
     U_all_idx{end+1} = U_idx;
 end
 
-for k = 1:length(T_mcdm_all)
+for k = 1:length(T_all)
     % W (selected utility)
-    W_idx = zeros(schedule_lengths(k), 1);
-    for j = 1:schedule_lengths(k)
+    W_idx = zeros(n, 1);
+    for j = 1:n
         var_name = sprintf('W%d_%d', k, j);
         model.vtype = [model.vtype 'C'];
         model.varnames{end+1} = var_name;
@@ -87,16 +90,28 @@ for k = 1:length(T_mcdm_all)
     W_all_idx{end+1} = W_idx;
 end
 
-for k = 1:length(T_mcdm_all)
+for k = 1:length(T_all)
     % T (accumulated time)
-    T_idx = zeros(schedule_lengths(k), 1);
-    for j = 1:schedule_lengths(k)
+    T_idx = zeros(n, 1);
+    for j = 1:n
         var_name = sprintf('T%d_%d', k, j);
         model.vtype = [model.vtype 'C'];
         model.varnames{end+1} = var_name;
         T_idx(j) = numel(model.varnames);
     end
     T_all_idx{end+1} = T_idx;
+end
+
+for k = 1:length(T_all)
+    % E (energy)
+    E_idx = zeros(n, 1);
+    for j = 1:n
+        var_name = sprintf('E%d_%d', k, j);
+        model.vtype = [model.vtype 'C'];
+        model.varnames{end+1} = var_name;
+        E_idx(j) = numel(model.varnames);
+    end
+    E_all_idx{end+1} = E_idx;
 end
 
 
@@ -115,6 +130,7 @@ end
 for i = 1:length(V_all_idx)
     model.lb(V_all_idx{i}(:)) = 0;
     model.ub(V_all_idx{i}(:)) = 1;
+    model.lb(V_all_idx{i}(schedule_starts(i))) = 1;
 end
 
 % delta 
@@ -126,24 +142,30 @@ end
 % U 
 for i = 1:length(U_all_idx)
     model.lb(U_all_idx{i}(:)) = 0;
-    model.ub(U_all_idx{i}(:)) = 100;
+    model.ub(U_all_idx{i}(:)) = 20;
     %model.ub(U_all_idx{i}(1)) = 0;
 end
 
 % W 
 for i = 1:length(W_all_idx)
     model.lb(W_all_idx{i}(:)) = 0;
-    model.ub(W_all_idx{i}(:)) = 100;
+    model.ub(W_all_idx{i}(:)) = 20;
     %model.ub(W_all_idx{i}(1)) = 0;
 end
 
 % T 
 for i = 1:length(T_all_idx)
     model.lb(T_all_idx{i}(:)) = 0;
-    model.ub(T_all_idx{i}(:)) = 2;
-    model.ub(T_all_idx{i}(1)) = 0;
+    model.ub(T_all_idx{i}(:)) = 1;
+    model.ub(T_all_idx{i}(schedule_starts(i))) = 0;
 end
 
+% E
+for i = 1:length(E_all_idx)
+    model.lb(E_all_idx{i}(:)) = 0;
+    model.ub(E_all_idx{i}(:)) = e0(i);
+    model.lb(E_all_idx{i}(schedule_starts(i))) = e0(i);
+end
 
 %% Constructing model.A (Constraints)
 A = [];
@@ -157,21 +179,37 @@ for ii = 1:length(X_all_idx)
     U = U_all_idx{ii};
     W = W_all_idx{ii};
     T = T_all_idx{ii};
-    T_mcdm = T_mcdm_all{ii};
+    E = E_all_idx{ii};
     T_trans = T_all{ii};
+    E_trans = E_all{ii};
+    T_const = T_const_all{ii}; 
+    E_const = E_const_all{ii};
     w = W_all{ii};
     a = A_all{ii};
 
-    % if a set is used, candidate 1 of that set must be selected
-    % Vi <= V1
-    for j = 2:size(X,1)
-        row = zeros(1, num_vars);
-        row(V(1)) = -1;
-        row(V(j)) = 1;
-        A = [A; row];
-        rhs = [rhs; 0];
-        sense = [sense; '<'];
+    % sum(X(:)) = sum(V(:)) - 1
+    row = zeros(1, num_vars);
+    row(X(:)) = 1;
+    row(V(:)) = -1;
+    A = [A; row];
+    rhs = [rhs; -1];
+    sense = [sense; '='];
+
+    % start nodes dont have incoming transitions
+    row = zeros(1, num_vars);
+    row(X(:,schedule_starts)) = 1;
+    A = [A; row];
+    rhs = [rhs; 0];
+    sense = [sense; '='];
+   
+    % no self transitions
+    row = zeros(1, num_vars);
+    for i = 1:size(X,1)
+        row(X(i,i)) = 1;  % Sum over all transitions into candidate 1
     end
+    A = [A; row];
+    rhs = [rhs; 0];
+    sense = [sense; '='];
 
     % allow a transition if only both i and j are visited
     for i = 1:size(X,1)
@@ -196,24 +234,11 @@ for ii = 1:length(X_all_idx)
         end
     end
 
-    % start nodes dont have incoming transitions
-    row = zeros(1, num_vars);
-    row(X(:,1)) = 1;
-    A = [A; row];
-    rhs = [rhs; 0];
-    sense = [sense; '='];
-
-    % no self transitions
-    row = zeros(1, num_vars);
-    for i = 1:size(X,1)
-        row(X(i,i)) = 1;  % Sum over all transitions into candidate 1
-    end
-    A = [A; row];
-    rhs = [rhs; 0];
-    sense = [sense; '='];
-
     % sum_i Xij = Vj
-    for j = 2:size(X,1)
+    for j = 1:size(X,1)
+        if ismember(j, schedule_starts)
+            continue;
+        end
         row = zeros(1, num_vars);
         row(X(:,j)) = 1;
         row(V(j)) = -1;
@@ -232,21 +257,6 @@ for ii = 1:length(X_all_idx)
         sense = [sense; '<'];
     end
 
-    % sum X = sum V - V1
-    row = zeros(1, num_vars);
-    row(X(:)) = 1;
-    row(V(2:end)) = -1;
-    A = [A; row];
-    rhs = [rhs; 0];
-    sense = [sense; '='];
-    
-    % only forward paths are feasible (lower triangle of X)
-    for i = 1:size(X,1)
-        for j = 1:i          % j ≤ i  
-            model.ub(X(i,j)) = 0;   % force Xij = 0
-        end
-    end
-
     % Tj - Ti = Xij T_all_ij
     for j = 1:size(X,1)
         for i = 1:size(X,2)
@@ -260,7 +270,19 @@ for ii = 1:length(X_all_idx)
         end
     end
 
-    for j = 1:size(X,1)
+    for j = 1:n
+        for i = 1:n
+            model.genconind(end+1).binvar = X(i, j);  % Binary variable X(i,j)
+            model.genconind(end).binval = 1;  % Activate only when X(i,j) = 1
+            model.genconind(end).a = zeros(1, num_vars);
+            model.genconind(end).a(E(j)) = -1;  
+            model.genconind(end).a(E(i)) = 1;
+            model.genconind(end).rhs = E_trans(i, j); % Transition energy value
+            model.genconind(end).sense = '='; % Enforce equality
+        end
+    end
+
+    for j = 1:size(U,1)
         % Case 1: If delta_j = 1, enforce U_j = w_j1 * (1 - Tj - a_j) + w_j2 * a_j
         % U_j + w_j1 * Tj = wj_1 - wj_1 * a_j + w_j2 * a_j
         model.genconind(end+1).binvar = delta(j);  % Binary variable
@@ -313,6 +335,22 @@ for ii = 1:length(X_all_idx)
         model.genconind(end).a(U(j)) = -1;  
         model.genconind(end).rhs = 0;  % Right-hand side
         model.genconind(end).sense = '=';  
+
+        % Vi = 1: Ti < Tconst_i
+        model.genconind(end+1).binvar = V(j);  % Binary variable
+        model.genconind(end).binval = 1;  
+        model.genconind(end).a = zeros(1, num_vars);
+        model.genconind(end).a(T(j)) = 1;  
+        model.genconind(end).rhs = T_const(j);  % Right-hand side
+        model.genconind(end).sense = '<';  
+
+        % Vi = 1: Ei > Econst_i
+        model.genconind(end+1).binvar = V(j);  % Binary variable
+        model.genconind(end).binval = 1;  
+        model.genconind(end).a = zeros(1, num_vars);
+        model.genconind(end).a(E(j)) = 1;  
+        model.genconind(end).rhs = E_const(j);  % Right-hand side
+        model.genconind(end).sense = '>';  
     end
 end
 
@@ -320,35 +358,32 @@ end
 for i = 1:height(conflicts)
     c1 = conflicts.("1")(i);
     c2 = conflicts.("2")(i);
-    v1_idx = find(c1 >= schedule_starts, 1, 'last');
-    v2_idx = find(c2 >= schedule_starts, 1, 'last');
-
-    % V1(c1) + V2(c2) <= 1;
+    
     row = zeros(1, num_vars);
-    row(V_all_idx{v1_idx}(c1 - schedule_starts(v1_idx) + 1)) = 1;
-    row(V_all_idx{v2_idx}(c2 - schedule_starts(v2_idx) + 1)) = 1;
+    % sum V(c1) + sum V(c2) <= 1;
+    for j = 1:length(T_all)
+        V = V_all_idx{j};
+        row(V(c1)) = 1;
+        row(V(c2)) = 1;
+    end
     A = [A; row];
     rhs = [rhs; 1];
     sense = [sense; '<'];
 end
 
-% set non-conflicting schedules to one
-non_conflict = setdiff(1:n, unique(conflicts{:,:}(:)));
-if ~isempty(non_conflict)
-    for i = 1:length(non_conflict)
-        c = non_conflict(i);
-        v_idx = find(c >= schedule_starts, 1, 'last');
-        V = V_all_idx{v_idx};
-        if ~ismember(c, schedule_starts)
-            % V(nc) = 1 
-            row = zeros(1, num_vars);
-            row(V(c - schedule_starts(v_idx) + 1)) = 1;
-            A = [A; row];
-            rhs = [rhs; 1];
-            sense = [sense; '='];
-        end
+% Only one candidate can be visited at all times
+% Vi1 + Vj1 + .. <= 1
+for i = 1:n
+    row = zeros(1, num_vars);
+    for j = 1:length(T_all)
+        V = V_all_idx{j};
+        row(V(i)) = 1;
     end
+     A = [A; row];
+    rhs = [rhs; 1];
+    sense = [sense; '<'];
 end
+
 
 
 %% Convert to Sparse Matrix

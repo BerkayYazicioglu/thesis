@@ -1,4 +1,4 @@
-max_step: 2
+max_step: 25
 height: 1
 speed: 1
 crit_energy: 0
@@ -8,7 +8,7 @@ color: red
 policy:
     preprocessing: closest
     num_tasks: 200
-    optimizer: ga
+    optimizer: milp_lns
     control_horizon: 1
     prediction_horizon: 6
 capabilities:
@@ -24,7 +24,7 @@ capabilities:
         angles: [0]
     mapper:
         type: map
-        capability: 0.5
+        capability: 0.25
         model: map_capability.fis
         t_s: '00:30'
         d_energy: 5

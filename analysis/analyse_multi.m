@@ -12,7 +12,8 @@ addpath("../src/gui/");
 %% Settings
 multi_run_plots = ["area"
                    "distance"
-                   "victim"
+                   "victim_count"
+                   "victim_state"
                    "utility"
                    "optimization"
                    "task"];

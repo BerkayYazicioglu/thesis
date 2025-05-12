@@ -37,7 +37,7 @@ q_inits = {...
            };
 
 repetitions = 1;
-experiment_name = "milp_single_robot_static";
+experiment_name = "milp_2ugv_static";
 
 
 %% Get config

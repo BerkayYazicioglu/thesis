@@ -108,10 +108,12 @@ classdef Mission < handle
             end
             obj.charger.path_planner();
             % check for conflicts
-            [conflicts, conflict_schedules] = detect_conflicts(obj);
-            if ~isempty(conflicts)
-                results.coop = cooperation(obj, conflict_schedules, conflicts);
-                obj.log_history(results);
+            if obj.settings.coordination_flag
+                [conflicts, conflict_schedules] = detect_conflicts(obj);
+                if ~isempty(conflicts)
+                    results.coop = cooperation(obj, conflict_schedules, conflicts);
+                    obj.log_history(results);
+                end
             end
         end
 
@@ -284,7 +286,7 @@ classdef Mission < handle
                 search_PI = [];
                 for i = 1:length(obj.tasks)
                     node = obj.tasks(i).node;
-                    extended_nodes = obj.map.nearest(node, 3, 'Method', 'unweighted');
+                    extended_nodes = obj.map.nearest(node, 2, 'Method', 'unweighted');
                     visible_nodes = obj.map.Nodes.Name(obj.map.Nodes.visible);
                     extended_nodes = extended_nodes(ismember(extended_nodes, visible_nodes));
                     if obj.tasks(i).type == "map"

@@ -413,7 +413,7 @@ classdef Robot < handle
 
         %% Update GUI handles
         function update_gui(obj, handles)
-            % update maps
+            % update mapszeros
             c = 0.4 * ones(obj.world.size());
             c(str2double(obj.map.Nodes.Name)) = 0;
             [bin, ~] = conncomp(obj.map);

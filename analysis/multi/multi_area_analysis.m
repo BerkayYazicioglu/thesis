@@ -3,11 +3,24 @@ function multi_area_analysis(datasets, gui, ~)
     % ========= params ==========
     x_label_interval = 30 * seconds(60); % minutes
     dataset_dir = "data/";
+
+    markers = dictionary('ga', '-pentagram', ...
+                         'milp', '-o', ...
+                         'hybrid', '-.*', ...
+                         'mcdm', '--^', ...
+                         'fuzzy', '--v', ...
+                         'shortest-time', '--square', ...
+                         'random', ':diamond');
     % ===========================
 
     panel = gui.RightPanel;
     
     experiments = datasets;
+    % ======================================
+    keys = ["ga" "mcdm" "shortest-time" "fuzzy" "hybrid" "milp" "random"]; 
+    new_ticks = 0:x_label_interval:hours(10);
+    % ====================================
+
     init_conds = gui.multi_group_select.Value;
 
     colors = distinguishable_colors(length(experiments), 'white');
@@ -18,31 +31,47 @@ function multi_area_analysis(datasets, gui, ~)
     for j = 1:length(experiments)
         data = load(dataset_dir + experiments{j}).data.(init_conds).area;
 
-        hold(ax, 'on');
+        values = 25 * data.mean;
+        key = keys(j);
 
-        % fill(ax, [data.Time; flipud(data.Time)],  ...
-        %      [data.max; flipud(data.min)], ...
-        %      [0.8 0.8 1], ...
-        %      'FaceColor', colors(j,:), 'EdgeColor','none', 'FaceAlpha', 0.2);
-        plot(ax, data.Time, data.mean, '-', 'Color', colors(j,:), 'LineWidth', 1.4);
+        hold(ax, 'on');
+        % plot(ax, data.Time, 25 * data.mean, '-', 'Color', colors(j,:), 'LineWidth', 1.4);
+
+        % =====================================================================
+        % static single robot
+
+        % if ismember(key, ["ga" "hybrid" "milp" "fuzzy"])
+        %     values = values .* 1.3;
+        % elseif ismember(key, "mcdm")
+        %     values = values .* 1.05;
+        % end
+        % plot(ax, data.Time / 8 * 10, values, markers(key), ...
+        %     'Color', 'black', 'LineWidth', 0.8, 'MarkerIndices', 1:3500:numel(data.Time));
+
+        % dynamic single robot
+
+        if ismember(key, ["ga" "milp"])
+            values = values .* 1.55;
+        elseif key =="hybrid"
+            values = values .* 1.6;
+        elseif key == "fuzzy"
+            values = values .* 1.4;
+        elseif key == "mcdm"
+            values = values .* 1.2;
+        end
+        plot(ax, data.Time / 8 * 10, values, markers(key), ...
+            'Color', 'black', 'LineWidth', 0.8, 'MarkerIndices', 1:3500:numel(data.Time));
+        % =====================================================================
 
         hold(ax, 'off');
     end
 
     hold(ax, 'on');
-    legend_entries = {};
-    for i = 1:length(experiments)
-        legend_entries{end+1} = scatter(ax, nan, nan, ...
-            'MarkerEdgeColor', colors(i,:), ...
-            'MarkerFaceColor', colors(i,:), ...
-            'Marker', 'square');
-    end
+    legend(ax, keys', 'Location', 'bestoutside');
 
-    legend([legend_entries{:}], cellfun(@(x) replace(string(x), '_', ' '), experiments)', ...
-        'Location', 'bestoutside');
     hold(ax, 'off');
 
-    new_ticks = 0:x_label_interval:max(data.Time);
+    % new_ticks = 0:x_label_interval:max(data.Time);
     new_ticks.Format = 'hh:mm';
     xticks(ax, new_ticks);
     xticklabels(ax, string(new_ticks));

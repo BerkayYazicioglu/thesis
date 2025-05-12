@@ -10,13 +10,29 @@ classdef World < handle
         environment graph = graph; % 8-connected graph where the robots move
         X, Y (:, :) double {mustBeReal, mustBeNonNan}; % meshgrid for x,y coordinates (m)
         special_ids;
+        params;
     end
     
     methods
         %% Constructor
         function obj = World(params)
             %WORLD Construct an instance of this class
+            obj.params = params;
             data = jsondecode(fileread(params.data_file)); 
+
+            if params.quadrant == "bottom_left"
+                data.size = data.size ./ 2;
+                data.grid = data.grid ./ 2;
+                data.terrain = data.terrain(1:50, 1:50);
+                data.destruction = data.destruction(1:50, 1:50);
+                data.population = data.population(1:50, 1:50);
+            elseif params.quadrant == "top_right"
+                data.size = data.size ./ 2;
+                data.grid = data.grid ./ 2;
+                data.terrain = data.terrain(51:100, 51:100);
+                data.destruction = data.destruction(51:100, 51:100);
+                data.population = data.population(51:100, 51:100);
+            end
             
             % constants
             [obj.X, obj.Y] = meshgrid(linspace(0, data.size(1), data.grid(1)), ...
@@ -95,10 +111,7 @@ classdef World < handle
         %% Add gates
         function add_gates(obj)
             terrain = obj.environment.Nodes.terrain;
-            X = obj.X./500 * 99 + 1;
-            Y = obj.Y./500 * 99 + 1;
-
-            % zone 1
+          
             paths = {{[15 23], [15 20], [13 15]}, ...
                      {[15 23], [15 20], [19 19]}, ...
                      {[8 31], [20 31]}, ...
@@ -119,6 +132,28 @@ classdef World < handle
                      {[83 79], [94 86], [94 95]}, ...
                      {[94 86], [99 87]}, ...
                      };
+
+            if obj.params.quadrant == "bottom_left"
+                paths = {{[15 23], [15 20], [13 15]}, ...
+                     {[15 23], [15 20], [19 19]}, ...
+                     {[8 31], [20 31]}, ...
+                     {[20 42], [19 47]}, ...
+                     {[20 50], [24 48]}, ...
+                     {[25 50], [19 48]}, ...
+                     {[18 49], [11 49], [18 49]}, ...
+                     {[42 24], [35, 18]}, ...
+                     {[24 13], [33 12]}};
+            elseif obj.params.quadrant == "top_right"
+                paths = {...
+                     {[61 60] - 50, [66 75] - 50}, ...
+                     {[60 76] - 50, [63 90] - 50}, ...
+                     {[70 55] - 50, [64 51] - 50}, ...
+                     {[86 96] - 50, [86 86] - 50, [80 86] - 50}, ...
+                     {[83 79] - 50, [94 86] - 50, [94 95] - 50}, ...
+                     {[94 86] - 50, [99 87] - 50}, ...
+                     };
+            end
+            
 
             for i = 1:length(paths)
                 p = paths{i};

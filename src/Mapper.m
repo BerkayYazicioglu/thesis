@@ -113,7 +113,14 @@ classdef Mapper < handle
             % calculate the probability of detecting 
             p = obj.probability(distance(:) ./ obj.max_range);
             % remove undetected
-            obj.measurements(rand(size(p)) > p, :) = [];
+            %obj.measurements(rand(size(p)) > p, :) = [];
+            
+
+            if obj.robot.mission.prediction_errors
+                error_count = floor((1 - obj.capability) .* numel(distance));
+                error_idx = datasample(1:numel(distance), error_count, 'Replace', false, 'Weights', 1-p);
+                obj.measurements(error_idx, :) = [];
+            end
         end
 
         %% Get the nonobstructed nodes from a given point

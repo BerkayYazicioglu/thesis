@@ -23,30 +23,11 @@ function output = postprocess_utility(missions)
             end
         end
         if ii == 1
-            output.u_action = history(:, 'u_action');
-            output.u_mcdm = history(:, 'u_mcdm');
+            output.u_action = history.u_action;
+            output.u_mcdm = history.u_mcdm;
         else
-            output.u_action = synchronize(output.u_action, history(:, 'u_action'), 'union'); 
-            output.u_mcdm = synchronize(output.u_mcdm, history(:, 'u_mcdm'), 'union'); 
+            output.u_action = [output.u_action; history.u_action];
+            output.u_mcdm = [output.u_mcdm; history.u_mcdm]; 
         end
     end
-    result = struct;
-
-    [~, idx] = unique(output.u_action.Time);
-    data = fillmissing(output.u_action(idx,:), 'previous');
-    result.u_action.mean = mean(data{:, :}, 2);
-    result.u_action.median = median(data{:, :}, 2);
-    result.u_action.max = prctile(data{:,:}, 75, 2);
-    result.u_action.min = prctile(data{:,:}, 25, 2);
-    result.u_action.t = data.Time;
-
-    [~, idx] = unique(output.u_mcdm.Time);
-    data = fillmissing(output.u_mcdm(idx,:), 'previous');
-    result.u_mcdm.mean = mean(data{:, :}, 2);
-    result.u_mcdm.median = median(data{:, :}, 2);
-    result.u_mcdm.max = prctile(data{:,:}, 75, 2);
-    result.u_mcdm.min = prctile(data{:,:}, 25, 2);
-    result.u_mcdm.t = data.Time;
-    
-    output = result;
 end

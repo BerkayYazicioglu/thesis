@@ -2,10 +2,10 @@ function single_mission_analysis(mission, gui, robot_id)
 
     % ========= params ==========
     markers = dictionary("victim", "diamond", ...
-                         "map", "o", ...
-                         "search", "pentagram", ...
+                         "map", "square", ...
+                         "search", "square", ...
                          "robot", "o", ...
-                         "charger", "o");
+                         "charger", "pentagram");
     c_victim = [1 0 0];
     c_victim_found = [0 0.8 0.2];
     c_tasks = ["green" "magenta"];
@@ -16,6 +16,7 @@ function single_mission_analysis(mission, gui, robot_id)
     charger_line = 2;
     charger_size = 150;
 
+    robot_id = "ugv_1";
     % ==========================+
 
     panel = gui.RightPanel;

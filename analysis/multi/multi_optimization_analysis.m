@@ -4,6 +4,8 @@ function multi_optimization_analysis(datasets, gui, ~)
     x_label_interval = 30 * seconds(60); % minutes
     wn = 20;
     dataset_dir = "data/";
+
+    keys = ["ga" "greedy mcdm" "greedy t" "greedy fuzzy" "hybrid" "milp" "random"]; 
     % ===========================
     
     panel = gui.RightPanel;
@@ -26,47 +28,42 @@ function multi_optimization_analysis(datasets, gui, ~)
     title(ax2, 'map utilities');
     title(ax3, 'search utilities');
 
+    time_groups = [];
+    map_groups = [];
+    search_groups = [];
+    time_vals = [];
+    map_vals = []; 
+    search_vals = [];
+
+
     for j = 1:length(experiments)
         data = load(dataset_dir + experiments{j}).data.(init_conds).optimization;
 
-        hold(ax1, 'on');
-        y = conv(data.t.mean, ones(wn,1)/wn, 'same');
-        plot(ax1, data.t.time, y, '-', 'Color', colors(j,:),'LineWidth', 1.4);
-        hold(ax1, 'off');
+        time_vals = [time_vals; data.t.mean];
+        time_groups = [time_groups; repmat(j, numel(data.t.mean), 1)];
 
-        hold(ax2, 'on');
-        y = conv(data.map.mean, ones(wn,1)/wn, 'same');
-        plot(ax2, data.map.time, y, '-', 'Color', colors(j,:),'LineWidth', 1.4);
-        hold(ax2, 'off');
+        map_vals = [map_vals; data.map.mean];
+        map_groups = [map_groups; repmat(j, numel(data.map.mean), 1)];
 
-        hold(ax3, 'on');
-        y = conv(data.search.mean, ones(wn,1)/wn, 'same');
-        plot(ax3, data.search.time,y, '-', 'Color', colors(j,:),'LineWidth', 1.4);
-        hold(ax3, 'off');
+        search_vals = [search_vals; data.search.mean];
+        search_groups = [search_groups; repmat(j, numel(data.search.mean), 1)];
+        
     end
 
-    new_ticks = 0:x_label_interval:seconds(data.t.time(end));
-    new_ticks.Format = 'hh:mm';
+   hold(ax1, 'on');
+    boxplot(ax1, time_vals, time_groups, 'Labels', keys, ...
+        'Symbol', '.r');
+    hold(ax1, 'off');
 
-    legend_entries = {};
-    Ax = [ax1, ax2, ax3];
-    for j = 1:length(Ax)
-        hold(Ax(j), 'on');
-        for i = 1:length(experiments)
-            legend_entries{end+1} = scatter(Ax(j), nan, nan, ...
-                'MarkerEdgeColor', colors(i,:), ...
-                'MarkerFaceColor', colors(i,:), ...
-                'Marker', 'square');
-        end
-        legend([legend_entries{:}], cellfun(@(x) replace(string(x), '_', ' '), experiments)', ...
-            'Location', 'bestoutside');
+    hold(ax2, 'on');
+    boxplot(ax2, map_vals, map_groups, 'Labels', keys, ...
+        'Symbol', '.r');
+    hold(ax2, 'off');
 
-        xticks(Ax(j), seconds(new_ticks));
-        xticklabels(Ax(j), string(new_ticks));
-        xtickangle(Ax(j), 90);
-        set(Ax(j),'TickLength',[0 0]);
-        hold(Ax(j), 'off');
-    end
+    hold(ax3, 'on');
+    boxplot(ax3, search_vals, search_groups, 'Labels', keys, ...
+        'Symbol', '.r');
+    hold(ax3, 'off');
 
     % bind silder
     gui.range_select.ValueChangedFcn = @slider_callback;

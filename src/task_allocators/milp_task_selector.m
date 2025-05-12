@@ -8,7 +8,7 @@ function [pp, task_idx] = milp_task_selector(robot, preprocessing)
 % cache -> optimization cache
 
 % ============================== params ===================================
-max_work_limit = 15;
+max_work_limit = 5;
 max_overlap = 2; 
 % =========================================================================
 

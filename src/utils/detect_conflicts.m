@@ -5,9 +5,16 @@ function [conflicts, schedules] = detect_conflicts(mission)
 
 % combine the actions per schedule 
 schedules = timetable();
+r_count = 0;
 for r = 1:length(mission.robots)
     robot = mission.robots(r);
     if isempty(robot.cache)
+        continue;
+    end
+
+    coord_area = mission.world.environment.nearest(robot.node, mission.settings.coordination_radius, 'Method', 'unweighted');
+    coord_area = [coord_area; robot.node];
+    if sum(ismember([mission.robots.node], coord_area)) == 1
         continue;
     end
 
@@ -25,6 +32,26 @@ for r = 1:length(mission.robots)
         'VariableNames', {'node', 'action', 'energy', 'u_map', 'u_search', 'robot_idx', 'type'});
                 schedule];
     schedules = [schedules; schedule];
+    r_count = r_count + 1;
+end
+
+remove_idx = [];
+for i = 1:height(schedules)
+    if schedules.action(i) == "none"
+        continue;
+    end
+    task_flags = schedules.node(i) == [mission.tasks.node] ...
+               & schedules.type(i) == [mission.tasks.type];
+    task_idx = find(task_flags);
+    if isempty(task_idx)
+        remove_idx = [remove_idx i];
+        continue;
+    end
+end
+schedules(remove_idx, :) = [];
+
+if r_count <= 1
+    schedules = timetable();
 end
 
 % determine conflicts 
@@ -36,7 +63,7 @@ for i = 1:height(schedules)-1
     end
     % get the nearest nodes within radius
     nearest_nodes = mission.map.nearest(cur_row.node, ...
-        mission.coordination_radius, "Method", "unweighted");
+        mission.settings.conflict_radius, "Method", "unweighted");
     nearest_nodes = [nearest_nodes; cur_row.node];
     for j = i+1:height(schedules)
         row = schedules(j,:);
@@ -53,6 +80,8 @@ for i = 1:height(schedules)-1
         end
     end
 end
+
+
 
 end
 

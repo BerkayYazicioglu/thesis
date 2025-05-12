@@ -1,6 +1,7 @@
 world:
     data_file: world_generator/data/dummy.json
     capture_video: false
+    quadrant: bottom_left
     victims:
         count: 100
         t_max: '10:00:00'
@@ -20,13 +21,14 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '08:00:00'
+    t_end: '02:00:00'
     PI_model: search_PI.fis
     milp_solver: milp_v2
-    prediction_errors: false
-    coordination_flag: true
+    prediction_errors: true
+    coordination_flag: false
     extended_tasks_flag: false
-    coordination_radius: 3
+    coordination_radius: 10
+    conflict_radius: 3
     q_init: [1,1]
     task_evaluation_model: task_evaluation.mat
     tasks:
@@ -41,15 +43,15 @@ mission:
     mcdm:
         t: 1
         m: 4
-        s: 8
-        mt: 7
+        s: 10
+        mt: 6
         st: 15
         ms: 20
         mst: 20
     charger:
         id: charger
         max_step: 0.5
-        speed: 0.025
+        speed: 0.5
         color: white
         policy: 
             optimizer: static
@@ -57,8 +59,8 @@ mission:
             task_proximity: 10
     robots:
         ugv:
-            count: 1
+            count: 0
         uav: 
-            count: 0
+            count: 1
         crawler:
-            count: 0
+            count: 1

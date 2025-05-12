@@ -21,7 +21,7 @@ single_run_plots = ["distance"
 
 %% Bind gui 
 global single_gui result_path single_mission mission_files
-result_path = "../results/";
+result_path = "../simulation/";
 single_gui = analysis_single_app;
 
 single_gui.single_plot_select.Items = single_run_plots;
@@ -89,7 +89,7 @@ end
 
 %% 
 function single_options_select(app, event)
-    global single_gui single_mission
+    global single_gui single_mission result_path
     single_mission = load(result_path + single_gui.dataset_select.Value + "/" + single_gui.mission_select.Value + "/mission.mat").mission;
     feval("single_" + single_gui.single_plot_select.Value + "_analysis", single_mission, single_gui);
 end
