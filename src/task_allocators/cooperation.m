@@ -74,22 +74,26 @@ for i = 1:length(robot_idx)
                    & row.type == [mission.tasks.type];
         task = mission.tasks(find(task_flags));
         preds = task.predict(mission.robots(row.robot_idx));
-        if row.type == "map"
-            priority = max(0, ...
-                    numel(robot.mission.world.environment.neighbors(task.node)) - ...
-                    numel(robot.mission.map.neighbors(task.node))) / ...
-                    numel(robot.mission.world.environment.neighbors(task.node));
-            capability = robot.mapper.capability;
-            distance = 1 - median(preds.distances) / robot.mapper.max_range;
-            quantity = height(preds);
+        if isempty(preds)
+            a(j, :) = [0 0 0 0];
         else
-            priority = task.priority;
-            capability = robot.detector.capability;
-            distance = 1 - median(preds.distances) / robot.detector.max_range;
-            quantity = height(preds);
+            if row.type == "map"
+                priority = max(0, ...
+                        numel(robot.mission.world.environment.neighbors(task.node)) - ...
+                        numel(robot.mission.map.neighbors(task.node))) / ...
+                        numel(robot.mission.world.environment.neighbors(task.node));
+                capability = robot.mapper.capability;
+                distance = 1 - median(preds.distances) / robot.mapper.max_range;
+                quantity = height(preds);
+            else
+                priority = task.priority;
+                capability = robot.detector.capability;
+                distance = 1 - median(preds.distances) / robot.detector.max_range;
+                quantity = height(preds);
+            end
+            a(j, :) = [priority capability distance quantity];
         end
-
-        a(j, :) = [priority capability distance quantity];
+        
         wi2 = 0;
         wi3 = 0;
         if row.type == "map"
