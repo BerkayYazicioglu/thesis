@@ -63,7 +63,12 @@ result_dir = inputdlg({'Enter save folder name'}, ...
                       'Save simulation results', ...
                       1, ...
                       {'1'});
-result_dir = "simulation/" + result_dir{1};
+model.genconind(end+1).binvar = V(j);  % Binary variable
+        model.genconind(end).binval = 1;  
+        model.genconind(end).a = zeros(1, num_vars);
+        model.genconind(end).a(T(j)) = 1;  
+        model.genconind(end).rhs = T_const(j);  % Right-hand side
+        model.genconind(end).sense = '=';  result_dir = "simulation/" + result_dir{1};
 mkdir(result_dir);
 
 gui.export_figures(result_dir);

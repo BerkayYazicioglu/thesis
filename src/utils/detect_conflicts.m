@@ -12,12 +12,6 @@ for r = 1:length(mission.robots)
         continue;
     end
 
-    coord_area = mission.world.environment.nearest(robot.node, mission.settings.coordination_radius, 'Method', 'unweighted');
-    coord_area = [coord_area; robot.node];
-    if sum(ismember([mission.robots.node], coord_area)) == 1
-        continue;
-    end
-
     row = robot.cache(robot.cache_idx,:);
     schedule = timetable(seconds(row.t{1}(:)), ...
         row.nodes{1}(:), ...
@@ -31,6 +25,17 @@ for r = 1:length(mission.robots)
     schedule = [timetable(robot.time, robot.node, "none", robot.energy, 0, 0, r, "none", ...
         'VariableNames', {'node', 'action', 'energy', 'u_map', 'u_search', 'robot_idx', 'type'});
                 schedule];
+
+    if r_count > 1
+        node = schedule.node(2);
+        coord_area = mission.world.environment.nearest(node, mission.settings.coordination_radius, 'Method', 'unweighted');
+        coord_area = [coord_area; node];
+        % hardcoded for two robots
+        other_node = schedules.node(2);
+        if ~ismember(other_node, coord_area)
+            continue;
+        end
+    end
     schedules = [schedules; schedule];
     r_count = r_count + 1;
 end

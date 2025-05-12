@@ -41,7 +41,11 @@ for i = 1:length(robot_idx)
     E = E + repmat(de, length(all_nodes), 1);
     T = T + repmat(dt, length(all_nodes), 1);
     T(find(eye(length(all_nodes)))) = 0;
-    T_all{end+1} = T ./ tmax;
+
+    T = T ./ tmax;
+    T(isinf(T)) = 2;
+    E(isinf(E)) = 200;
+    T_all{end+1} = T;
     E_all{end+1} = E;
     e0(end+1) = robot.energy; 
 
@@ -122,6 +126,12 @@ for i = 1:length(constraints_all)
         end
         T_const(j) = min(1, seconds(const.Time(end) - robot.time) / tmax);
         E_const(j) = const.energy(end);
+        if isinf(T_const(j))
+            T_const(j) = 0;
+        end
+        if isinf(E_const(j))
+            E_const(j) = 200;
+        end
     end
     T_const_all{end+1} = T_const;
     E_const_all{end+1} = E_const;
@@ -184,6 +194,12 @@ for i = 1:length(schedule_starts)
 end
 
 %% process results
+output.new_schedules = struct;
+output.old_schedules = schedules;
+output.conflicts = conflicts;
+output.u = result.objval; 
+
+
 for i = 1:length(robot_idx)
     robot = mission.robots(robot_idx(i));
     robot.schedule(:,:) = [];
@@ -230,9 +246,9 @@ for i = 1:length(robot_idx)
             mission.tasks(task_idx(ii)).R_k(r_idx) = [];
         end
         % plan new path
-        output.pp.(robot.id) = robot.path_planner();
+        pp = robot.path_planner();
         % if charge_flag is raised, construct the return path
-        if output.pp.(robot.id).charge_flag
+        if pp.charge_flag
             if robot.state == "idle"
                 robot.schedule = timetable(min(other_schedules.Time), ...
                         robot.node, "charge_done", 100, ...
@@ -256,6 +272,17 @@ for i = 1:length(robot_idx)
             robot.generate_schedule([output.pp.(robot.id).tasks.node], ...
                                     output.pp.(robot.id).actions, ...
                                     robot.time);
+            % save result
+            row = pp.cache(pp.cache_idx,:);
+            output.new_schedules.(robot.id) = timetable(seconds(row.t{1}(:)), ...
+                row.nodes{1}(:), ...
+                row.actions{1}(:), ...
+                row.e{1}(:), ...
+                row.u_map{1}(:), ...
+                row.u_search{1}(:), ...
+                'VariableNames', {'node', 'action', 'energy', 'u_map', 'u_search'});
+            output.new_schedules.(robot.id).robot_idx = repmat(r, height(schedule), 1);
+            output.new_schedules.(robot.id).type = arrayfun(@(x) extractBefore(x, '_'), schedule.action);
         end
         % unflag the tasks
         for ii = 1:length(task_idx)
@@ -265,11 +292,9 @@ for i = 1:length(robot_idx)
         new_actions = new_schedule.action(1);
         new_nodes = new_schedule.node(1);
         robot.generate_schedule(new_nodes, new_actions, robot.time);
+        % save result
+        output.new_schedules.(robot.id) = new_schedule;
     end
 end
 
-
-output.u = result.objval;
-output.trials = result.pool;
 end
-
