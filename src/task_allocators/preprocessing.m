@@ -9,6 +9,10 @@ output.dt = duration.empty;
 output.de = [];
 output.constraints = {};
 
+if isempty([robot.mission.tasks.node])
+    return
+end
+
 % get the accessible nodes 
 [bin, ~] = conncomp(robot.map);
 accessible = 0 * bin;

@@ -25,9 +25,9 @@ mission:
     PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: true
-    coordination_flag: false
+    coordination_flag: true
     extended_tasks_flag: false
-    coordination_radius: 20
+    coordination_radius: 50
     conflict_radius: 3
     q_init: [1,1]
     task_evaluation_model: task_evaluation.mat
@@ -59,8 +59,8 @@ mission:
             task_proximity: 10
     robots:
         ugv:
-            count: 0
+            count: 2
         uav: 
-            count: 1
+            count: 0
         crawler:
-            count: 1
+            count: 0
