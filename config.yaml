@@ -21,13 +21,13 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '02:00:00'
+    t_end: '04:00:00'
     PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: true
-    coordination_flag: true
+    coordination_flag: false
     extended_tasks_flag: false
-    coordination_radius: 25
+    coordination_radius: 20
     conflict_radius: 3
     q_init: [1,1]
     task_evaluation_model: task_evaluation.mat
@@ -43,8 +43,8 @@ mission:
     mcdm:
         t: 1
         m: 4
-        s: 7
-        mt: 8
+        s: 8
+        mt: 7
         st: 15
         ms: 20
         mst: 20

@@ -14,7 +14,7 @@ policy:
 capabilities:
     detector:
         type: search
-        capability: 0.25
+        capability: 0.5
         model: search_capability.mat
         t_s: '03:00'
         d_energy: 10

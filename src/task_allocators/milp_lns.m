@@ -126,6 +126,10 @@ if pred_horizon > size
 end
 
 %% Gather results
+if cache_idx == 0
+    cache = table({}, {}, {}, {}, [], ...
+    'VariableNames', {'x', 't', 'e', 'u', 'u_total'});
+end
 output.cache = cache;
 output.x = extract_milp_path(result.x, variables);
 output.t = result.x(variables.T(output.x))';

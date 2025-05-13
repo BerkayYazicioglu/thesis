@@ -24,11 +24,11 @@ capabilities:
         angles: [0]
     mapper:
         type: map
-        capability: 0.25
+        capability: 0.5
         model: map_capability.fis
         t_s: '00:30'
         d_energy: 5
         features: [terrain, destruction, population]
-        max_range: 6
+        max_range: 4
         arc: 360
         angles: [0]

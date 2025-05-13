@@ -222,7 +222,8 @@ classdef Mission < handle
                         end
                         % get neighbors on the current mission map
                         node = new_measurements.nodes(i);
-                        nodes = [node; obj.map.neighbors(node)];
+                        nodes = node;
+                        %nodes = [node; obj.map.neighbors(node)];
                         search_nodes = [obj.tasks([obj.tasks.type] == "search").node];
                         for ii = 1:length(nodes)
                             if ~isempty(search_nodes) && ismember(nodes(ii), search_nodes)

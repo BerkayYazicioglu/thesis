@@ -285,8 +285,6 @@ for i = 1:length(robot_idx)
                 row.u_map{1}(:), ...
                 row.u_search{1}(:), ...
                 'VariableNames', {'node', 'action', 'energy', 'u_map', 'u_search'});
-            output.new_schedules.(robot.id).robot_idx = repmat(r, height(schedule), 1);
-            output.new_schedules.(robot.id).type = arrayfun(@(x) extractBefore(x, '_'), schedule.action);
         end
         % unflag the tasks
         for ii = 1:length(task_idx)
