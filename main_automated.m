@@ -37,7 +37,7 @@ q_inits = {...
            };
 
 repetitions = 1;
-experiment_name = "milp_2ugv_static";
+experiment_name = "uav_crawler_static_coop";
 
 
 %% Get config

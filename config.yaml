@@ -1,7 +1,7 @@
 world:
     data_file: world_generator/data/dummy.json
     capture_video: false
-    quadrant: bottom_left
+    quadrant: none
     victims:
         count: 100
         t_max: '10:00:00'
@@ -21,7 +21,7 @@ gui:
                      distance]
     charger_types: [static, center_of_mass]
 mission:
-    t_end: '04:00:00'
+    t_end: '08:00:00'
     PI_model: search_PI.fis
     milp_solver: milp_v2
     prediction_errors: true
@@ -59,8 +59,8 @@ mission:
             task_proximity: 10
     robots:
         ugv:
-            count: 2
+            count: 0
         uav: 
-            count: 0
+            count: 1
         crawler:
-            count: 0
+            count: 1
